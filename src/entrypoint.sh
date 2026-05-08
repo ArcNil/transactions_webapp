@@ -2,7 +2,7 @@
 set -e
 
 echo "==> Waiting for database to be ready..."
-until pg_isready -h db -U "$POSTGRES_USER" -d "$POSTGRES_DB" -q; do
+until pg_isready -h db -U "$DATABASE_USERNAME" -d "$DATABASE_NAME" -q; do
     sleep 1
 done
 echo "==> Database is ready."
