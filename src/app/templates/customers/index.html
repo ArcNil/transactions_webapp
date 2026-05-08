@@ -1,0 +1,124 @@
+{% extends 'base.html' %}
+{% block title %}Customers{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex align-items-center justify-content-between">
+    <h1><i class="bi bi-people me-2 text-primary"></i>Customers</h1>
+    <button class="btn btn-primary btn-sm"
+            data-bs-toggle="modal" data-bs-target="#customerModal"
+            onclick="openAddModal()">
+        <i class="bi bi-person-plus me-1"></i> Add Customer
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if customers %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light small">
+                    <tr>
+                        <th>Name</th>
+                        <th>Added</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in customers %}
+                    <tr>
+                        <td class="fw-semibold">{{ c.name }}</td>
+                        <td class="text-muted small">{{ c.created_at.strftime('%b %d, %Y') }}</td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-light me-1"
+                                    onclick="openEditModal({{ c.id }}, '{{ c.name|e }}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-light text-danger"
+                                    onclick="openDeleteModal({{ c.id }}, '{{ c.name|e }}')">
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-people fs-2 d-block mb-2"></i>
+            No customers yet. Add your first customer.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add / Edit modal -->
+<div class="modal fade" id="customerModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow">
+            <form id="customerForm" method="POST">
+                {{ form.hidden_tag() }}
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold" id="customerModalTitle">Add Customer</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-0">
+                    {{ form.name.label(class="form-label fw-semibold small") }}
+                    {{ form.name(class="form-control", placeholder="Customer name") }}
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary btn-sm fw-semibold">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0">
+                <h6 class="modal-title fw-bold">Remove Customer</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <p class="mb-0">Remove <strong id="deleteCustomerName"></strong>?</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <form id="deleteForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const addUrl = "{{ url_for('customers.add') }}";
+
+function openAddModal() {
+    document.getElementById('customerModalTitle').textContent = 'Add Customer';
+    document.getElementById('customerForm').action = addUrl;
+    document.getElementById('customerForm').reset();
+}
+
+function openEditModal(id, name) {
+    document.getElementById('customerModalTitle').textContent = 'Edit Customer';
+    document.getElementById('customerForm').action = '/customers/' + id + '/edit';
+    document.getElementById('customerForm').querySelector('[name=name]').value = name;
+    new bootstrap.Modal(document.getElementById('customerModal')).show();
+}
+
+function openDeleteModal(id, name) {
+    document.getElementById('deleteCustomerName').textContent = name;
+    document.getElementById('deleteForm').action = '/customers/' + id + '/delete';
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+</script>
+{% endblock %}

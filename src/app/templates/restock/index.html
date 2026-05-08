@@ -1,0 +1,363 @@
+{% extends 'base.html' %}
+{% block title %}Restock{% endblock %}
+
+{% block extra_css %}
+<style>
+    .product-btn {
+        border: 2px solid #bae6fd; background: #fff;
+        border-radius: .75rem; padding: 1rem .75rem;
+        text-align: center; cursor: pointer;
+        transition: border-color .15s, background .15s;
+        width: 100%; display: block;
+    }
+    .product-btn:hover, .product-btn:focus {
+        border-color: #0284c7; background: #f0f9ff; outline: none;
+    }
+    .product-btn .p-name  { font-weight: 600; font-size: .9rem; color: #0f172a; }
+    .product-btn .p-price { font-size: .78rem; color: #0284c7; font-weight: 500; margin-top: 2px; }
+    .product-btn .p-stock { font-size: .7rem; color: #94a3b8; }
+
+    /* Cart */
+    .cart-item {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        align-items: center;
+        gap: .5rem;
+        padding: .6rem .75rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .cart-item:last-child { border-bottom: none; }
+
+    .qty-ctrl { display: flex; align-items: center; gap: .2rem; }
+    .qty-btn {
+        width: 26px; height: 26px; border-radius: 50%;
+        border: 1px solid #cbd5e1; background: #f8fafc;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: .9rem; color: #475569; padding: 0;
+    }
+    .qty-btn:hover { background: #e2e8f0; }
+    .qty-input {
+        width: 38px; text-align: center;
+        border: 1px solid #cbd5e1; border-radius: .25rem;
+        padding: .1rem .2rem; font-size: .85rem;
+    }
+
+    /* Payment options */
+    .pay-opt {
+        border: 2px solid #e2e8f0; border-radius: .5rem;
+        padding: .6rem .75rem; width: 100%;
+        text-align: left; font-size: .875rem; font-weight: 500;
+        cursor: pointer; background: #f8fafc; color: #475569;
+        display: flex; align-items: center; gap: .5rem;
+        transition: border-color .15s, background .15s;
+    }
+    .pay-opt:hover { filter: brightness(.97); }
+    .pay-opt.sel-full    { border-color: #16a34a; background: #f0fdf4; color: #15803d; }
+    .pay-opt.sel-partial { border-color: #d97706; background: #fffbeb; color: #b45309; }
+    .pay-opt.sel-unpaid  { border-color: #dc2626; background: #fef2f2; color: #b91c1c; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-box-arrow-in-down me-2 text-primary"></i>Restock</h1>
+</div>
+
+<div class="row g-3">
+    <!-- Products + Vendor selector -->
+    <div class="col-12 col-lg-7 col-xl-8">
+
+        <!-- Vendor selector -->
+        <div class="card mb-3">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-truck text-muted fs-5 flex-shrink-0"></i>
+                    <div class="flex-grow-1">
+                        <select id="vendorSelect" class="form-select form-select-sm">
+                            <option value="">— Select vendor —</option>
+                            {% for v in vendors %}
+                            <option value="{{ v.id }}">{{ v.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Product grid -->
+        <div class="card">
+            <div class="card-header bg-white border-bottom py-2">
+                <strong class="small text-muted text-uppercase">
+                    <i class="bi bi-box me-1"></i>Products
+                </strong>
+            </div>
+            <div class="card-body">
+                {% if products %}
+                <div class="row g-2">
+                    {% for p in products %}
+                    <div class="col-6 col-sm-4 col-md-3 col-lg-4 col-xl-3">
+                        <button class="product-btn"
+                                data-id="{{ p.id }}"
+                                data-name="{{ p.name|e }}"
+                                data-unit="{{ p.unit|e }}"
+                                data-price="{{ p.price }}"
+                                data-stock="{{ p.stock }}"
+                                onclick="openQtyModal(this)">
+                            <div class="p-name">{{ p.name }}</div>
+                            <div class="p-price">₱{{ "%.2f"|format(p.price) }}</div>
+                            <div class="p-stock">Stock: {{ p.stock }}</div>
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-box fs-2 d-block mb-2"></i>
+                    No active products.
+                    <a href="{{ url_for('products.index') }}">Add one</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Cart + Payment -->
+    <div class="col-12 col-lg-5 col-xl-4">
+        <div class="card">
+            <!-- Cart header -->
+            <div class="card-header bg-white border-bottom py-2 d-flex justify-content-between align-items-center">
+                <strong class="small text-muted text-uppercase">
+                    <i class="bi bi-cart3 me-1"></i>Cart
+                </strong>
+                <button class="btn btn-sm btn-light" onclick="clearCart()" title="Clear cart">
+                    <i class="bi bi-trash3"></i>
+                </button>
+            </div>
+
+            <!-- Cart items area -->
+            <div id="cartBody">
+                <div id="emptyMsg" class="text-center text-muted py-4 px-3">
+                    <i class="bi bi-cart-x fs-2 d-block mb-2"></i>
+                    Tap a product to add
+                </div>
+            </div>
+
+            <!-- Total -->
+            <div class="cart-total-bar border-top px-3 py-2 d-flex justify-content-between align-items-center"
+                 style="background:#f8fafc">
+                <span class="fw-semibold">Total</span>
+                <span class="fw-bold fs-5 text-primary" id="cartTotal">₱0.00</span>
+            </div>
+
+            <!-- Payment options -->
+            <div class="px-3 pt-3 pb-1">
+                <div class="small fw-semibold text-muted text-uppercase mb-2">Payment to Vendor</div>
+                <div class="d-flex flex-column gap-2">
+                    <button class="pay-opt" id="btnFull" onclick="selectPayment('full')">
+                        <i class="bi bi-check-circle-fill text-success"></i> Full Payment
+                    </button>
+                    <button class="pay-opt" id="btnPartial" onclick="selectPayment('partial')">
+                        <i class="bi bi-cash text-warning"></i> Partial Payment
+                    </button>
+                    <div id="partialWrap" style="display:none" class="ps-2">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">₱</span>
+                            <input type="number" id="partialAmt" class="form-control"
+                                   placeholder="Amount paid" min="0" step="1">
+                        </div>
+                    </div>
+                    <button class="pay-opt" id="btnUnpaid" onclick="selectPayment('unpaid')">
+                        <i class="bi bi-x-circle-fill text-danger"></i> Not Paid
+                    </button>
+                </div>
+            </div>
+
+            <!-- Save button -->
+            <div class="p-3">
+                <form id="restockForm" method="POST" action="{{ url_for('restock.save') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="vendor_id"      id="hVendor">
+                    <input type="hidden" name="payment_status" id="hStatus">
+                    <input type="hidden" name="amount_paid"    id="hAmountPaid">
+                    <input type="hidden" name="items"          id="hItems">
+                    <button type="submit" class="btn btn-primary w-100 btn-lg fw-semibold"
+                            id="saveBtn" disabled>
+                        <i class="bi bi-box-arrow-in-down me-1"></i> Save Restock
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quantity modal -->
+<div class="modal fade" id="qtyModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 pb-1">
+                <h6 class="modal-title fw-bold" id="qtyTitle"></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="text-muted small mb-2" id="qtySub"></div>
+                <div class="mb-3">
+                    <label class="form-label small fw-semibold">Quantity to restock</label>
+                    <input type="number" class="form-control form-control-lg text-center"
+                           id="qtyInput" value="1" min="0.5" step="0.5">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold">Total Price (₱)</label>
+                    <input type="number" class="form-control text-center"
+                           id="priceInput" value="0" min="0" step="0.01">
+                </div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-primary w-100 fw-semibold" onclick="confirmAdd()">
+                    <i class="bi bi-cart-plus me-1"></i> Add to Cart
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let cart = [];
+let selectedPayment = null;
+let modalProduct = null;
+const qtyModal = new bootstrap.Modal(document.getElementById('qtyModal'));
+
+/* ── Quantity modal ── */
+function openQtyModal(btn) {
+    modalProduct = {
+        id: btn.dataset.id,
+        name: btn.dataset.name,
+        unit: btn.dataset.unit,
+    };
+    document.getElementById('qtyTitle').textContent = modalProduct.name;
+    document.getElementById('qtySub').textContent = modalProduct.unit;
+    document.getElementById('qtyInput').value = 1;
+    document.getElementById('priceInput').value = 0;
+    qtyModal.show();
+    setTimeout(() => document.getElementById('qtyInput').select(), 300);
+}
+
+document.getElementById('qtyInput').addEventListener('input', refreshQtySubtotal);
+document.getElementById('priceInput').addEventListener('input', refreshQtySubtotal);
+function refreshQtySubtotal() {
+    const total = parseFloat(document.getElementById('priceInput').value) || 0;
+    document.getElementById('qtySub').textContent =
+        `${modalProduct ? modalProduct.unit : ''} · Total: ₱${total.toFixed(2)}`;
+}
+
+function confirmAdd() {
+    const qty = parseFloat(document.getElementById('qtyInput').value);
+    const totalPrice = parseFloat(document.getElementById('priceInput').value) || 0;
+    if (!qty || qty <= 0) return;
+    const unitPrice = qty > 0 ? totalPrice / qty : 0;
+    const existing = cart.find(i => i.id === modalProduct.id);
+    if (existing) {
+        existing.quantity = qty;
+        existing.unit_price = unitPrice;
+        existing.subtotal = totalPrice;
+    } else {
+        cart.push({ ...modalProduct, quantity: qty, unit_price: unitPrice, subtotal: totalPrice });
+    }
+    qtyModal.hide();
+    renderCart();
+}
+
+/* ── Cart rendering ── */
+function renderCart() {
+    const body = document.getElementById('cartBody');
+    if (cart.length === 0) {
+        body.innerHTML = `<div id="emptyMsg" class="text-center text-muted py-4 px-3">
+            <i class="bi bi-cart-x fs-2 d-block mb-2"></i>Tap a product to add</div>`;
+    } else {
+        body.innerHTML = cart.map((item, idx) => `
+            <div class="cart-item">
+                <div>
+                    <div class="fw-semibold small">${item.name}</div>
+                    <div class="text-muted" style="font-size:.72rem">${item.quantity} ${item.unit}</div>
+                </div>
+                <div class="qty-ctrl">
+                    <button class="qty-btn" onclick="changeQty(${idx}, -0.5)">−</button>
+                    <input class="qty-input" type="number" value="${item.quantity}"
+                           min="0.5" step="0.5" onchange="setQty(${idx}, this.value)">
+                    <button class="qty-btn" onclick="changeQty(${idx}, 0.5)">+</button>
+                </div>
+                <div class="text-end">
+                    <div class="fw-semibold small text-primary">₱${item.subtotal.toFixed(2)}</div>
+                    <button class="btn p-0 text-danger" onclick="removeItem(${idx})"
+                            style="font-size:.7rem"><i class="bi bi-trash3"></i></button>
+                </div>
+            </div>`).join('');
+    }
+    refreshTotal();
+    refreshSaveBtn();
+}
+
+function changeQty(idx, delta) {
+    cart[idx].quantity = Math.max(0.5, +(cart[idx].quantity + delta).toFixed(2));
+    cart[idx].subtotal = cart[idx].unit_price * cart[idx].quantity;
+    renderCart();
+}
+function setQty(idx, val) {
+    const q = parseFloat(val);
+    if (!q || q <= 0) return removeItem(idx);
+    cart[idx].quantity = q;
+    cart[idx].subtotal = cart[idx].unit_price * cart[idx].quantity;
+    renderCart();
+}
+function removeItem(idx) { cart.splice(idx, 1); renderCart(); }
+function clearCart() {
+    cart = []; selectedPayment = null;
+    ['btnFull','btnPartial','btnUnpaid'].forEach(id =>
+        document.getElementById(id).className = 'pay-opt');
+    document.getElementById('partialWrap').style.display = 'none';
+    renderCart();
+}
+
+function refreshTotal() {
+    const total = cart.reduce((s, i) => s + i.subtotal, 0);
+    document.getElementById('cartTotal').textContent = '₱' + total.toFixed(2);
+}
+
+/* ── Payment selection ── */
+function selectPayment(type) {
+    selectedPayment = type;
+    const map = { full: 'btnFull', partial: 'btnPartial', unpaid: 'btnUnpaid' };
+    Object.entries(map).forEach(([t, id]) => {
+        document.getElementById(id).className = 'pay-opt' + (t === type ? ` sel-${t}` : '');
+    });
+    document.getElementById('partialWrap').style.display =
+        type === 'partial' ? 'block' : 'none';
+    refreshSaveBtn();
+}
+
+function refreshSaveBtn() {
+    const vendorSelected = document.getElementById('vendorSelect').value !== '';
+    document.getElementById('saveBtn').disabled =
+        !(cart.length > 0 && selectedPayment !== null && vendorSelected);
+}
+
+document.getElementById('vendorSelect').addEventListener('change', refreshSaveBtn);
+
+/* ── Form submit ── */
+document.getElementById('restockForm').addEventListener('submit', () => {
+    document.getElementById('hVendor').value =
+        document.getElementById('vendorSelect').value;
+    document.getElementById('hStatus').value = selectedPayment;
+    document.getElementById('hItems').value = JSON.stringify(
+        cart.map(i => ({ product_id: i.id, quantity: i.quantity, unit_price: i.unit_price }))
+    );
+    let paid = 0;
+    if (selectedPayment === 'full')
+        paid = cart.reduce((s, i) => s + i.subtotal, 0);
+    else if (selectedPayment === 'partial')
+        paid = parseFloat(document.getElementById('partialAmt').value) || 0;
+    document.getElementById('hAmountPaid').value = paid.toFixed(2);
+});
+</script>
+{% endblock %}

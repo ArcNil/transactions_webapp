@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block title %}Monitoring{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex align-items-center justify-content-between">
+    <h1><i class="bi bi-activity me-2"></i>Monitoring</h1>
+    <span id="live-indicator" class="badge bg-secondary">
+        <i class="bi bi-circle-fill me-1" style="font-size:.5rem;vertical-align:middle"></i>Connecting…
+    </span>
+</div>
+
+{# ── Resource Gauges ─────────────────────────────────────────────────────── #}
+<div class="row g-3 mb-4" id="gauges">
+    {% set gauges = [
+        ("CPU",    "cpu",  stats.resources.cpu_pct,
+            stats.resources.cpu_pct ~ "%", "bi-cpu"),
+        ("Memory", "mem",  stats.resources.mem_pct,
+            stats.resources.mem_used_mb ~ " / " ~ stats.resources.mem_total_mb ~ " MB",
+            "bi-memory"),
+        ("Disk",   "disk", stats.resources.disk_pct,
+            stats.resources.disk_used_gb ~ " / " ~ stats.resources.disk_total_gb ~ " GB",
+            "bi-hdd"),
+    ] %}
+    {% for label, key, pct, sub, icon in gauges %}
+    {% set colour = "danger" if pct > 85 else ("warning" if pct > 60 else "success") %}
+    <div class="col-12 col-md-4">
+        <div class="card p-3">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="bi {{ icon }} fs-5 text-secondary"></i>
+                <span class="fw-semibold">{{ label }}</span>
+                <span id="gauge-{{ key }}-pct" class="ms-auto fw-bold text-{{ colour }}">{{ pct }}%</span>
+            </div>
+            <div class="progress mb-1" style="height:8px">
+                <div id="gauge-{{ key }}-bar" class="progress-bar bg-{{ colour }}" style="width:{{ pct }}%"></div>
+            </div>
+            <small id="gauge-{{ key }}-sub" class="text-muted">{{ sub }}</small>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{# ── Active Sessions ──────────────────────────────────────────────────────── #}
+<div class="card mb-4">
+    <div class="card-body">
+        <h6 class="fw-bold mb-3">
+            <i class="bi bi-people me-1"></i>Active Sessions
+            <span id="sessions-count" class="badge bg-primary ms-1">{{ stats.active_sessions | length }}</span>
+        </h6>
+        <div id="sessions-body">
+            {% if stats.active_sessions %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead class="table-light"><tr><th>User</th><th>IP</th><th>Logged in at</th></tr></thead>
+                    <tbody>
+                        {% for uid, s in stats.active_sessions.items() %}
+                        <tr>
+                            <td><i class="bi bi-person me-1 text-muted"></i>{{ s.username }}</td>
+                            <td><code>{{ s.ip }}</code></td>
+                            <td class="text-muted">{{ s.login_at }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted mb-0 small">No active sessions.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{# ── Recent Actions + Recent Requests ────────────────────────────────────── #}
+<div class="row g-3 mb-4">
+
+    <div class="col-12 col-xl-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3"><i class="bi bi-lightning me-1"></i>Recent Actions</h6>
+                <div id="actions-wrap">
+                    {% if stats.actions %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0" style="font-size:.8rem">
+                            <thead class="table-light"><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+                            <tbody>
+                                {% for a in stats.actions %}
+                                <tr>
+                                    <td class="text-muted text-nowrap">{{ a.ts }}</td>
+                                    <td>{{ a.username }}</td>
+                                    <td>
+                                        {% if "failure" in a.action or "denied" in a.action %}
+                                        <span class="badge bg-danger">{{ a.action }}</span>
+                                        {% elif "login" in a.action or "logout" in a.action %}
+                                        <span class="badge bg-info text-dark">{{ a.action }}</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ a.action }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-muted">{{ a.detail }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0 small">No actions recorded yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-6">
+        <div class="card h-100">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3"><i class="bi bi-globe me-1"></i>Recent Requests</h6>
+                <div id="requests-wrap">
+                    {% if stats.requests %}
+                    <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
+                        <table class="table table-sm table-hover mb-0" style="font-size:.8rem">
+                            <thead class="table-light"><tr><th>Time</th><th>IP</th><th>Method</th><th>Path</th><th>User</th><th>Status</th></tr></thead>
+                            <tbody>
+                                {% for r in stats.requests %}
+                                <tr>
+                                    <td class="text-muted text-nowrap">{{ r.ts }}</td>
+                                    <td><code>{{ r.ip }}</code></td>
+                                    <td><span class="badge {% if r.method == 'POST' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ r.method }}</span></td>
+                                    <td class="text-truncate" style="max-width:150px" title="{{ r.path }}">{{ r.path }}</td>
+                                    <td>{{ r.username }}</td>
+                                    <td><span class="badge {% if r.status >= 500 %}bg-danger{% elif r.status >= 400 %}bg-warning text-dark{% else %}bg-success{% endif %}">{{ r.status }}</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted mb-0 small">No requests recorded yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+(function () {
+    const indicator = document.getElementById('live-indicator');
+
+    function colourFor(pct) {
+        return pct > 85 ? 'danger' : pct > 60 ? 'warning' : 'success';
+    }
+
+    function updateGauge(key, pct, sub) {
+        const colour = colourFor(pct);
+        const pctEl  = document.getElementById('gauge-' + key + '-pct');
+        const barEl  = document.getElementById('gauge-' + key + '-bar');
+        const subEl  = document.getElementById('gauge-' + key + '-sub');
+        if (!pctEl) return;
+        pctEl.textContent = pct + '%';
+        pctEl.className   = 'ms-auto fw-bold text-' + colour;
+        barEl.style.width = pct + '%';
+        barEl.className   = 'progress-bar bg-' + colour;
+        subEl.textContent = sub;
+    }
+
+    function badgeForAction(action) {
+        var safe = esc(action);
+        if (action.includes('failure') || action.includes('denied'))
+            return '<span class="badge bg-danger">' + safe + '</span>';
+        if (action.includes('login') || action.includes('logout'))
+            return '<span class="badge bg-info text-dark">' + safe + '</span>';
+        return '<span class="badge bg-secondary">' + safe + '</span>';
+    }
+
+    function badgeForStatus(status) {
+        var cls = status >= 500 ? 'bg-danger' : status >= 400 ? 'bg-warning text-dark' : 'bg-success';
+        return '<span class="badge ' + cls + '">' + esc(status) + '</span>';
+    }
+
+    function badgeForMethod(method) {
+        var cls = method === 'POST' ? 'bg-warning text-dark' : 'bg-secondary';
+        return '<span class="badge ' + cls + '">' + esc(method) + '</span>';
+    }
+
+    function esc(str) {
+        return String(str)
+            .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function renderSessions(sessions) {
+        var entries = Object.entries(sessions);
+        document.getElementById('sessions-count').textContent = entries.length;
+        var wrap = document.getElementById('sessions-body');
+        if (!entries.length) {
+            wrap.innerHTML = '<p class="text-muted mb-0 small">No active sessions.</p>';
+            return;
+        }
+        var rows = entries.map(function(e) {
+            var s = e[1];
+            return '<tr><td><i class="bi bi-person me-1 text-muted"></i>' + esc(s.username) +
+                   '</td><td><code>' + esc(s.ip) + '</code></td>' +
+                   '<td class="text-muted">' + esc(s.login_at) + '</td></tr>';
+        }).join('');
+        wrap.innerHTML = '<div class="table-responsive"><table class="table table-sm table-hover mb-0">' +
+            '<thead class="table-light"><tr><th>User</th><th>IP</th><th>Logged in at</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div>';
+    }
+
+    function renderActions(actions) {
+        var wrap = document.getElementById('actions-wrap');
+        if (!actions.length) {
+            wrap.innerHTML = '<p class="text-muted mb-0 small">No actions recorded yet.</p>';
+            return;
+        }
+        var rows = actions.map(function(a) {
+            return '<tr>' +
+                '<td class="text-muted text-nowrap">' + esc(a.ts) + '</td>' +
+                '<td>' + esc(a.username) + '</td>' +
+                '<td>' + badgeForAction(a.action) + '</td>' +
+                '<td class="text-muted">' + esc(a.detail) + '</td></tr>';
+        }).join('');
+        wrap.innerHTML = '<div class="table-responsive"><table class="table table-sm table-hover mb-0" style="font-size:.8rem">' +
+            '<thead class="table-light"><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div>';
+    }
+
+    function renderRequests(requests) {
+        var wrap = document.getElementById('requests-wrap');
+        if (!requests.length) {
+            wrap.innerHTML = '<p class="text-muted mb-0 small">No requests recorded yet.</p>';
+            return;
+        }
+        var rows = requests.map(function(r) {
+            return '<tr>' +
+                '<td class="text-muted text-nowrap">' + esc(r.ts) + '</td>' +
+                '<td><code>' + esc(r.ip) + '</code></td>' +
+                '<td>' + badgeForMethod(r.method) + '</td>' +
+                '<td class="text-truncate" style="max-width:150px" title="' + esc(r.path) + '">' + esc(r.path) + '</td>' +
+                '<td>' + esc(r.username) + '</td>' +
+                '<td>' + badgeForStatus(r.status) + '</td></tr>';
+        }).join('');
+        wrap.innerHTML = '<div class="table-responsive" style="max-height:400px;overflow-y:auto;">' +
+            '<table class="table table-sm table-hover mb-0" style="font-size:.8rem">' +
+            '<thead class="table-light"><tr><th>Time</th><th>IP</th><th>Method</th><th>Path</th><th>User</th><th>Status</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div>';
+    }
+
+    function connect() {
+        var es = new EventSource("{{ url_for('monitoring.stream') }}");
+
+        es.onopen = function() {
+            indicator.className = 'badge bg-success';
+            indicator.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size:.5rem;vertical-align:middle"></i>Live';
+        };
+
+        es.onmessage = function(e) {
+            var d = JSON.parse(e.data);
+            var r = d.resources;
+            updateGauge('cpu',  r.cpu_pct,  r.cpu_pct + '%');
+            updateGauge('mem',  r.mem_pct,  r.mem_used_mb + ' / ' + r.mem_total_mb + ' MB');
+            updateGauge('disk', r.disk_pct, r.disk_used_gb + ' / ' + r.disk_total_gb + ' GB');
+            renderSessions(d.active_sessions);
+            renderActions(d.actions);
+            renderRequests(d.requests);
+        };
+
+        es.onerror = function() {
+            indicator.className = 'badge bg-danger';
+            indicator.innerHTML = '<i class="bi bi-circle-fill me-1" style="font-size:.5rem;vertical-align:middle"></i>Disconnected — retrying…';
+            es.close();
+            setTimeout(connect, 5000);
+        };
+    }
+
+    connect();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,279 @@
+{% extends 'base.html' %}
+{% block title %}Products{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex align-items-center justify-content-between">
+    <h1><i class="bi bi-droplet me-2 text-primary"></i>Products</h1>
+    <button class="btn btn-primary btn-sm"
+            data-bs-toggle="modal" data-bs-target="#productModal"
+            onclick="openAddModal()">
+        <i class="bi bi-plus-lg me-1"></i> Add Product
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        {% if products %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light small">
+                    <tr>
+                        <th>Name</th>
+                        <th>Unit</th>
+                        <th class="text-end">Price</th>
+                        <th class="text-end">Available</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-center">POS</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in products %}
+                    <tr>
+                        <td class="fw-semibold">{{ p.name }}</td>
+                        <td class="text-muted small">{{ p.unit }}</td>
+                        <td class="text-end fw-semibold">₱{{ "%.2f"|format(p.price) }}</td>
+                        <td class="text-end">
+                            {% set avail = p.available_stock %}
+                            {% if p.ingredients %}
+                            <span class="text-muted" style="font-size:.7rem" title="Derived from raw stock">
+                                <i class="bi bi-archive me-1"></i>
+                            </span>
+                            {% endif %}
+                            {% if avail == 0 %}
+                            <span class="badge text-bg-danger">0</span>
+                            {% elif avail <= 5 %}
+                            <span class="badge text-bg-warning text-dark">{{ avail }}</span>
+                            {% else %}
+                            <span class="fw-semibold">{{ avail }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if p.is_active %}
+                            <span class="badge text-bg-success">Active</span>
+                            {% else %}
+                            <span class="badge text-bg-secondary">Inactive</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <form method="POST" action="/products/{{ p.id }}/toggle_pos" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-link p-0 border-0"
+                                        title="{{ 'Hide from POS' if p.show_in_pos else 'Show in POS' }}">
+                                    {% if p.show_in_pos %}
+                                    <i class="bi bi-eye-fill text-success"></i>
+                                    {% else %}
+                                    <i class="bi bi-eye-slash text-muted"></i>
+                                    {% endif %}
+                                </button>
+                            </form>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-sm btn-light me-1"
+                                    title="Manage ingredients"
+                                    onclick="openIngredientsModal({{ p.id }}, '{{ p.name|e }}', {{ ingredients_by_product[p.id] | tojson }})">
+                                <i class="bi bi-ui-checks"></i>
+                            </button>
+                            <button class="btn btn-sm btn-light me-1"
+                                    onclick="openEditModal({{ p.id }}, '{{ p.name|e }}', '{{ p.unit|e }}', {{ p.price }}, {{ 'true' if p.is_active else 'false' }}, {{ p.vendor_id if p.vendor_id else 0 }}, {{ 'true' if p.show_in_pos else 'false' }})">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-light text-danger"
+                                    onclick="openDeleteModal({{ p.id }}, '{{ p.name|e }}')">
+                                <i class="bi bi-trash3"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-droplet fs-2 d-block mb-2"></i>
+            No products yet. Add your first product.
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Add / Edit modal -->
+<div class="modal fade" id="productModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form id="productForm" method="POST">
+                {{ form.hidden_tag() }}
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold" id="productModalTitle">Add Product</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-0">
+                    <div class="mb-3">
+                        {{ form.name.label(class="form-label fw-semibold small") }}
+                        {{ form.name(class="form-control", placeholder="e.g. Gallon") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.unit.label(class="form-label fw-semibold small") }}
+                        {{ form.unit(class="form-control", placeholder="e.g. gallon, bucket") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.price.label(class="form-label fw-semibold small") }}
+                        <div class="input-group">
+                            <span class="input-group-text">₱</span>
+                            {{ form.price(class="form-control", placeholder="0.00") }}
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        {{ form.vendor_id.label(class="form-label fw-semibold small") }}
+                        {{ form.vendor_id(class="form-select") }}
+                    </div>
+                    <div class="form-check">
+                        {{ form.is_active(class="form-check-input") }}
+                        {{ form.is_active.label(class="form-check-label small") }}
+                    </div>
+                    <div class="form-check">
+                        {{ form.show_in_pos(class="form-check-input") }}
+                        {{ form.show_in_pos.label(class="form-check-label small") }}
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary fw-semibold">Save Product</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Ingredients modal -->
+<div class="modal fade" id="ingredientsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold">Ingredients — <span id="ingProductName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <!-- Current ingredients -->
+                <div id="ingList" class="mb-3"></div>
+
+                <!-- Add ingredient form -->
+                <form id="ingAddForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="small fw-semibold text-muted text-uppercase mb-2">Add Ingredient</div>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-6">
+                            <label class="form-label small">Stock Item</label>
+                            <select name="stock_item_id" class="form-select form-select-sm" required>
+                                <option value="">— Select —</option>
+                                {% for si in stock_items %}
+                                <option value="{{ si.id }}">{{ si.name }} ({{ si.unit }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small">Qty per unit</label>
+                            <input type="number" name="quantity" class="form-control form-control-sm"
+                                   step="0.0001" min="0.0001" placeholder="e.g. 20" required>
+                        </div>
+                        <div class="col-2">
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete confirm modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0">
+                <h6 class="modal-title fw-bold">Delete Product</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <p class="mb-0">Delete <strong id="deleteProductName"></strong>?
+                    This cannot be undone.</p>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <form id="deleteForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const addUrl      = "{{ url_for('products.add') }}";
+const editBaseUrl = "/products/";
+const csrfToken   = "{{ csrf_token() }}";
+
+function openAddModal() {
+    document.getElementById('productModalTitle').textContent = 'Add Product';
+    document.getElementById('productForm').action = addUrl;
+    document.getElementById('productForm').reset();
+    document.getElementById('productForm').querySelector('[name=is_active]').checked = true;
+    document.getElementById('productForm').querySelector('[name=show_in_pos]').checked = true;
+}
+
+function openEditModal(id, name, unit, price, isActive, vendorId, showInPos) {
+    document.getElementById('productModalTitle').textContent = 'Edit Product';
+    document.getElementById('productForm').action = editBaseUrl + id + '/edit';
+    const f = document.getElementById('productForm');
+    f.querySelector('[name=name]').value = name;
+    f.querySelector('[name=unit]').value = unit;
+    f.querySelector('[name=price]').value = price;
+    f.querySelector('[name=is_active]').checked = isActive;
+    f.querySelector('[name=show_in_pos]').checked = showInPos;
+    f.querySelector('[name=vendor_id]').value = vendorId;
+    new bootstrap.Modal(document.getElementById('productModal')).show();
+}
+
+function openDeleteModal(id, name) {
+    document.getElementById('deleteProductName').textContent = name;
+    document.getElementById('deleteForm').action = '/products/' + id + '/delete';
+    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+
+function openIngredientsModal(productId, productName, ingredients) {
+    document.getElementById('ingProductName').textContent = productName;
+    document.getElementById('ingAddForm').action = '/products/' + productId + '/ingredients/add';
+
+    const list = document.getElementById('ingList');
+    if (ingredients.length === 0) {
+        list.innerHTML = '<p class="text-muted small fst-italic">No ingredients yet.</p>';
+    } else {
+        list.innerHTML = '<div class="small fw-semibold text-muted text-uppercase mb-2">Current Ingredients</div>' +
+            ingredients.map(ing => `
+                <div class="d-flex align-items-center justify-content-between py-1 border-bottom">
+                    <span class="small">
+                        <i class="bi bi-archive me-1 text-muted"></i>
+                        ${ing.stock_item_name} &times; ${ing.quantity} ${ing.stock_item_unit}
+                    </span>
+                    <form method="POST"
+                          action="/products/${productId}/ingredients/${ing.id}/delete"
+                          class="d-inline">
+                        <input type="hidden" name="csrf_token" value="${csrfToken}">
+                        <button type="submit" class="btn btn-sm p-0 text-danger ms-2">
+                            <i class="bi bi-trash3"></i>
+                        </button>
+                    </form>
+                </div>`).join('');
+    }
+    new bootstrap.Modal(document.getElementById('ingredientsModal')).show();
+}
+</script>
+{% endblock %}

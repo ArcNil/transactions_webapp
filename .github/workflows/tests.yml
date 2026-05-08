@@ -1,0 +1,20 @@
+# To reject pushes when tests fail, enable branch protection on main/test in GitHub:
+# Settings → Branches → Add rule → require status checks → select this workflow's job name ("test").
+# Once configured, GitHub will block merges to those branches if this workflow does not pass.
+
+name: Tests
+
+on:
+  push:
+    branches: [main, test]
+  pull_request:
+    branches: [main, test]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run test suite
+        run: docker compose -f compose.test.yml up --build --exit-code-from test

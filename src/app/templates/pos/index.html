@@ -1,0 +1,490 @@
+{% extends 'base.html' %}
+{% block title %}POS{% endblock %}
+
+{% block extra_css %}
+<style>
+    .product-btn {
+        border: 2px solid #bae6fd; background: #fff;
+        border-radius: .75rem; padding: 1rem .75rem;
+        text-align: center; cursor: pointer;
+        transition: border-color .15s, background .15s;
+        width: 100%; display: block;
+    }
+    .product-btn:hover, .product-btn:focus {
+        border-color: #0284c7; background: #f0f9ff; outline: none;
+    }
+    .product-btn .p-name  { font-weight: 600; font-size: .9rem; color: #0f172a; }
+    .product-btn .p-price { font-size: .78rem; color: #0284c7; font-weight: 500; margin-top: 2px; }
+    .product-btn .p-unit  { font-size: .7rem; color: #94a3b8; }
+
+    /* Cart */
+    .cart-item {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        align-items: center;
+        gap: .5rem;
+        padding: .6rem .75rem;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    .cart-item:last-child { border-bottom: none; }
+
+    .qty-ctrl { display: flex; align-items: center; gap: .2rem; }
+    .qty-btn {
+        width: 26px; height: 26px; border-radius: 50%;
+        border: 1px solid #cbd5e1; background: #f8fafc;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: .9rem; color: #475569; padding: 0;
+    }
+    .qty-btn:hover { background: #e2e8f0; }
+    .qty-input {
+        width: 38px; text-align: center;
+        border: 1px solid #cbd5e1; border-radius: .25rem;
+        padding: .1rem .2rem; font-size: .85rem;
+    }
+
+    /* Payment options */
+    .pay-opt {
+        border: 2px solid #e2e8f0; border-radius: .5rem;
+        padding: .6rem .75rem; width: 100%;
+        text-align: left; font-size: .875rem; font-weight: 500;
+        cursor: pointer; background: #f8fafc; color: #475569;
+        display: flex; align-items: center; gap: .5rem;
+        transition: border-color .15s, background .15s;
+    }
+    .pay-opt:hover { filter: brightness(.97); }
+    .pay-opt.sel-full    { border-color: #16a34a; background: #f0fdf4; color: #15803d; }
+    .pay-opt.sel-partial { border-color: #d97706; background: #fffbeb; color: #b45309; }
+    .pay-opt.sel-unpaid  { border-color: #dc2626; background: #fef2f2; color: #b91c1c; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-cart3 me-2 text-primary"></i>POS</h1>
+</div>
+
+<div class="row g-3">
+    <!-- Products + Customer selector -->
+    <div class="col-12 col-lg-7 col-xl-8">
+        <!-- Customer -->
+        <div class="card mb-3">
+            <div class="card-body py-2 px-3">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-person-circle text-muted fs-5 flex-shrink-0"></i>
+                    <div class="flex-grow-1 position-relative">
+                        <input type="text" id="customerSearch" class="form-control form-control-sm"
+                               placeholder="Search customer (or leave blank for walk-in)"
+                               autocomplete="off">
+                        <div id="customerDropdown"
+                             class="position-absolute w-100 bg-white border rounded shadow-sm"
+                             style="z-index:200;display:none;max-height:200px;overflow-y:auto;top:100%">
+                        </div>
+                        <input type="hidden" id="customerSelect" value="">
+                        <div id="selectedCustomer" class="text-primary small mt-1" style="display:none"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Product grid -->
+        <div class="card">
+            <div class="card-header bg-white border-bottom py-2 d-flex justify-content-between align-items-center">
+                <strong class="small text-muted text-uppercase">
+                    <i class="bi bi-droplet me-1"></i>Products
+                </strong>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openCustomModal()">
+                    <i class="bi bi-plus-lg me-1"></i>Custom
+                </button>
+            </div>
+            <div class="card-body">
+                {% if products %}
+                <div class="row g-2">
+                    {% for p in products %}
+                    <div class="col-6 col-sm-4 col-md-3 col-lg-4 col-xl-3">
+                        <button class="product-btn {% if p.available_stock == 0 %}disabled opacity-50{% endif %}"
+                                data-id="{{ p.id }}"
+                                data-name="{{ p.name|e }}"
+                                data-unit="{{ p.unit|e }}"
+                                data-price="{{ p.price }}"
+                                data-stock="{{ p.available_stock }}"
+                                onclick="openQtyModal(this)"
+                                {% if p.available_stock == 0 %}disabled{% endif %}>
+                            <div class="p-name">{{ p.name }}</div>
+                            <div class="p-price">₱{{ "%.2f"|format(p.price) }}</div>
+                            <div class="p-unit">
+                                {% if p.available_stock == 0 %}
+                                <span class="badge text-bg-danger" style="font-size:.65rem">Out of stock</span>
+                                {% else %}
+                                {{ p.available_stock }} {{ p.unit }}(s) left
+                                {% endif %}
+                            </div>
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="bi bi-droplet fs-2 d-block mb-2"></i>
+                    No active products.
+                    <a href="{{ url_for('products.index') }}">Add one</a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Cart + Payment -->
+    <div class="col-12 col-lg-5 col-xl-4">
+        <div class="card">
+            <!-- Cart header -->
+            <div class="card-header bg-white border-bottom py-2 d-flex justify-content-between align-items-center">
+                <strong class="small text-muted text-uppercase">
+                    <i class="bi bi-cart3 me-1"></i>Cart
+                </strong>
+                <button class="btn btn-sm btn-light" onclick="clearCart()" title="Clear cart">
+                    <i class="bi bi-trash3"></i>
+                </button>
+            </div>
+
+            <!-- Cart items area -->
+            <div id="cartBody">
+                <div id="emptyMsg" class="text-center text-muted py-4 px-3">
+                    <i class="bi bi-cart-x fs-2 d-block mb-2"></i>
+                    Tap a product to add
+                </div>
+            </div>
+
+            <!-- Total -->
+            <div class="cart-total-bar border-top px-3 py-2 d-flex justify-content-between align-items-center"
+                 style="background:#f8fafc">
+                <span class="fw-semibold">Total</span>
+                <span class="fw-bold fs-5 text-primary" id="cartTotal">₱0.00</span>
+            </div>
+
+            <!-- Payment options -->
+            <div class="px-3 pt-3 pb-1">
+                <div class="small fw-semibold text-muted text-uppercase mb-2">Payment</div>
+                <div class="d-flex flex-column gap-2">
+                    <button class="pay-opt" id="btnFull" onclick="selectPayment('full')">
+                        <i class="bi bi-check-circle-fill text-success"></i> Full Payment
+                    </button>
+                    <button class="pay-opt" id="btnPartial" onclick="selectPayment('partial')">
+                        <i class="bi bi-cash text-warning"></i> Partial Payment
+                    </button>
+                    <div id="partialWrap" style="display:none" class="ps-2">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">₱</span>
+                            <input type="number" id="partialAmt" class="form-control"
+                                   placeholder="Amount paid" min="0" step="1">
+                        </div>
+                    </div>
+                    <button class="pay-opt" id="btnUnpaid" onclick="selectPayment('unpaid')">
+                        <i class="bi bi-x-circle-fill text-danger"></i> Not Paid
+                    </button>
+                </div>
+            </div>
+
+            <!-- Save button -->
+            <div class="p-3">
+                <form id="posForm" method="POST" action="{{ url_for('pos.save') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="customer_id"      id="hCustomer">
+                    <input type="hidden" name="payment_status"   id="hStatus">
+                    <input type="hidden" name="amount_paid"      id="hAmountPaid">
+                    <input type="hidden" name="items"            id="hItems">
+                    <button type="submit" class="btn btn-primary w-100 btn-lg fw-semibold"
+                            id="saveBtn" disabled>
+                        <i class="bi bi-floppy me-1"></i> Save Transaction
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Custom item modal -->
+<div class="modal fade" id="customModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 pb-1">
+                <h6 class="modal-title fw-bold">Custom Item</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="mb-2">
+                    <label class="form-label small fw-semibold">Item name</label>
+                    <input type="text" class="form-control form-control-sm" id="customName"
+                           placeholder="e.g. Slim bottle">
+                </div>
+                <div class="row g-2 mb-2">
+                    <div class="col">
+                        <label class="form-label small fw-semibold">Price (₱)</label>
+                        <input type="number" class="form-control form-control-sm" id="customPrice"
+                               placeholder="0.00" min="0.01" step="0.01">
+                    </div>
+                    <div class="col">
+                        <label class="form-label small fw-semibold">Unit</label>
+                        <input type="text" class="form-control form-control-sm" id="customUnit"
+                               placeholder="e.g. pc">
+                    </div>
+                </div>
+                <div class="mb-1">
+                    <label class="form-label small fw-semibold">Quantity</label>
+                    <input type="number" class="form-control form-control-sm" id="customQty"
+                           value="1" min="0.5" step="0.5">
+                </div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-primary w-100 fw-semibold" onclick="confirmCustomAdd()">
+                    <i class="bi bi-cart-plus me-1"></i> Add to Cart
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quantity modal -->
+<div class="modal fade" id="qtyModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 pb-1">
+                <h6 class="modal-title fw-bold" id="qtyTitle"></h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <div class="text-muted small mb-2" id="qtySub"></div>
+                <label class="form-label small fw-semibold">Quantity</label>
+                <input type="number" class="form-control form-control-lg text-center"
+                       id="qtyInput" value="1" min="0.5" step="0.5">
+                <div class="text-center text-primary fw-semibold mt-2 small" id="qtySubtotal"></div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button class="btn btn-primary w-100 fw-semibold" onclick="confirmAdd()">
+                    <i class="bi bi-cart-plus me-1"></i> Add to Cart
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let cart = [];
+let selectedPayment = null;
+let modalProduct = null;
+const qtyModal    = new bootstrap.Modal(document.getElementById('qtyModal'));
+const customModal = new bootstrap.Modal(document.getElementById('customModal'));
+
+/* ── Custom item modal ── */
+function openCustomModal() {
+    document.getElementById('customName').value  = '';
+    document.getElementById('customPrice').value = '';
+    document.getElementById('customUnit').value  = '';
+    document.getElementById('customQty').value   = 1;
+    customModal.show();
+    setTimeout(() => document.getElementById('customName').focus(), 300);
+}
+
+function confirmCustomAdd() {
+    const name  = document.getElementById('customName').value.trim();
+    const price = parseFloat(document.getElementById('customPrice').value);
+    const unit  = document.getElementById('customUnit').value.trim();
+    const qty   = parseFloat(document.getElementById('customQty').value);
+    if (!name || !price || price <= 0 || !unit || !qty || qty <= 0) return;
+    // Custom items use id=null; keyed by name+unit so duplicates merge
+    const key = '__custom__' + name + '|' + unit;
+    const existing = cart.find(i => i.id === key);
+    if (existing) {
+        existing.quantity += qty;
+        existing.subtotal  = existing.quantity * existing.price;
+    } else {
+        cart.push({ id: key, name, unit, price, quantity: qty, subtotal: qty * price, custom: true });
+    }
+    customModal.hide();
+    renderCart();
+}
+
+/* ── Quantity modal ── */
+function openQtyModal(btn) {
+    modalProduct = {
+        id: btn.dataset.id,
+        name: btn.dataset.name,
+        unit: btn.dataset.unit,
+        price: parseFloat(btn.dataset.price),
+        stock: parseFloat(btn.dataset.stock),
+    };
+    document.getElementById('qtyTitle').textContent = modalProduct.name;
+    document.getElementById('qtySub').textContent =
+        `₱${modalProduct.price.toFixed(2)} per ${modalProduct.unit}`;
+    document.getElementById('qtyInput').value = 1;
+    refreshQtySubtotal();
+    qtyModal.show();
+    setTimeout(() => document.getElementById('qtyInput').select(), 300);
+}
+
+document.getElementById('qtyInput').addEventListener('input', refreshQtySubtotal);
+function refreshQtySubtotal() {
+    const qty = parseFloat(document.getElementById('qtyInput').value) || 0;
+    if (modalProduct) {
+        document.getElementById('qtySubtotal').textContent =
+            `Subtotal: ₱${(qty * modalProduct.price).toFixed(2)}`;
+    }
+}
+
+function confirmAdd() {
+    const qty = parseFloat(document.getElementById('qtyInput').value);
+    if (!qty || qty <= 0) return;
+    // Check stock (account for already-carted quantity)
+    const carted = cart.find(i => i.id === modalProduct.id);
+    const cartedQty = carted ? carted.quantity : 0;
+    if (modalProduct.stock !== undefined && (cartedQty + qty) > modalProduct.stock) {
+        document.getElementById('qtySubtotal').textContent =
+            `⚠ Only ${modalProduct.stock} in stock`;
+        document.getElementById('qtySubtotal').style.color = '#dc2626';
+        return;
+    }
+    if (carted) {
+        carted.quantity += qty;
+        carted.subtotal = carted.quantity * carted.price;
+    } else {
+        cart.push({ ...modalProduct, quantity: qty, subtotal: qty * modalProduct.price });
+    }
+    qtyModal.hide();
+    renderCart();
+}
+
+/* ── Cart rendering ── */
+function renderCart() {
+    const body = document.getElementById('cartBody');
+    if (cart.length === 0) {
+        body.innerHTML = `<div id="emptyMsg" class="text-center text-muted py-4 px-3">
+            <i class="bi bi-cart-x fs-2 d-block mb-2"></i>Tap a product to add</div>`;
+    } else {
+        body.innerHTML = cart.map((item, idx) => `
+            <div class="cart-item">
+                <div>
+                    <div class="fw-semibold small">${item.name}</div>
+                    <div class="text-muted" style="font-size:.72rem">₱${item.price.toFixed(2)} / ${item.unit}</div>
+                </div>
+                <div class="qty-ctrl">
+                    <button class="qty-btn" onclick="changeQty(${idx}, -0.5)">−</button>
+                    <input class="qty-input" type="number" value="${item.quantity}"
+                           min="0.5" step="0.5" onchange="setQty(${idx}, this.value)">
+                    <button class="qty-btn" onclick="changeQty(${idx}, 0.5)">+</button>
+                </div>
+                <div class="text-end">
+                    <div class="fw-semibold small text-primary">₱${item.subtotal.toFixed(2)}</div>
+                    <button class="btn p-0 text-danger" onclick="removeItem(${idx})"
+                            style="font-size:.7rem"><i class="bi bi-trash3"></i></button>
+                </div>
+            </div>`).join('');
+    }
+    refreshTotal();
+    refreshSaveBtn();
+}
+
+function changeQty(idx, delta) {
+    cart[idx].quantity = Math.max(0.5, +(cart[idx].quantity + delta).toFixed(2));
+    cart[idx].subtotal = cart[idx].quantity * cart[idx].price;
+    renderCart();
+}
+function setQty(idx, val) {
+    const q = parseFloat(val);
+    if (!q || q <= 0) return removeItem(idx);
+    cart[idx].quantity = q;
+    cart[idx].subtotal = q * cart[idx].price;
+    renderCart();
+}
+function removeItem(idx) { cart.splice(idx, 1); renderCart(); }
+function clearCart() {
+    cart = []; selectedPayment = null;
+    ['btnFull','btnPartial','btnUnpaid'].forEach(id =>
+        document.getElementById(id).className = 'pay-opt');
+    document.getElementById('partialWrap').style.display = 'none';
+    renderCart();
+}
+
+function refreshTotal() {
+    const total = cart.reduce((s, i) => s + i.subtotal, 0);
+    document.getElementById('cartTotal').textContent = '₱' + total.toFixed(2);
+}
+
+/* ── Payment selection ── */
+function selectPayment(type) {
+    selectedPayment = type;
+    const map = { full: 'btnFull', partial: 'btnPartial', unpaid: 'btnUnpaid' };
+    Object.entries(map).forEach(([t, id]) => {
+        document.getElementById(id).className = 'pay-opt' + (t === type ? ` sel-${t}` : '');
+    });
+    document.getElementById('partialWrap').style.display =
+        type === 'partial' ? 'block' : 'none';
+    refreshSaveBtn();
+}
+
+function refreshSaveBtn() {
+    document.getElementById('saveBtn').disabled =
+        !(cart.length > 0 && selectedPayment !== null);
+}
+
+/* ── Form submit ── */
+document.getElementById('posForm').addEventListener('submit', () => {
+    document.getElementById('hCustomer').value =
+        document.getElementById('customerSelect').value;
+    document.getElementById('hStatus').value = selectedPayment;
+    document.getElementById('hItems').value = JSON.stringify(
+        cart.map(i => i.custom
+            ? { product_id: null, name: i.name, price: i.price, unit: i.unit, quantity: i.quantity }
+            : { product_id: i.id, quantity: i.quantity }
+        )
+    );
+    let paid = 0;
+    if (selectedPayment === 'full')
+        paid = cart.reduce((s, i) => s + i.subtotal, 0);
+    else if (selectedPayment === 'partial')
+        paid = parseFloat(document.getElementById('partialAmt').value) || 0;
+    document.getElementById('hAmountPaid').value = paid.toFixed(2);
+});
+
+/* ── Customer search ── */
+const customers = {{ customers | tojson }};
+const searchInput = document.getElementById('customerSearch');
+const dropdown    = document.getElementById('customerDropdown');
+const hiddenInput = document.getElementById('customerSelect');
+const selectedLbl = document.getElementById('selectedCustomer');
+
+searchInput.addEventListener('input', () => {
+    const q = searchInput.value.toLowerCase().trim();
+    if (!q) { dropdown.style.display = 'none'; return; }
+    const matches = customers.filter(c => c.name.toLowerCase().includes(q));
+    if (!matches.length) { dropdown.style.display = 'none'; return; }
+    dropdown.innerHTML = matches.map(c =>
+        `<div class="px-3 py-2 small" style="cursor:pointer"
+              onmousedown="selectCustomer(${c.id}, '${c.name.replace(/'/g,"\\'")}')">
+             <i class="bi bi-person me-1 text-muted"></i>${c.name}
+         </div>`
+    ).join('');
+    dropdown.style.display = 'block';
+});
+
+searchInput.addEventListener('blur', () => {
+    setTimeout(() => { dropdown.style.display = 'none'; }, 150);
+});
+
+function selectCustomer(id, name) {
+    hiddenInput.value = id;
+    searchInput.value = name;
+    selectedLbl.textContent = '✓ ' + name;
+    selectedLbl.style.display = 'block';
+    dropdown.style.display = 'none';
+}
+
+// Allow clearing
+searchInput.addEventListener('keydown', e => {
+    if (e.key === 'Backspace' && hiddenInput.value) {
+        hiddenInput.value = '';
+        selectedLbl.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

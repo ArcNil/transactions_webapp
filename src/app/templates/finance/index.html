@@ -1,0 +1,243 @@
+{% extends 'base.html' %}
+{% block title %}Finance{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-icon {
+        width: 48px; height: 48px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.4rem; flex-shrink: 0;
+    }
+    .stat-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; font-weight: 600; }
+    .stat-value { font-size: 1.45rem; font-weight: 700; color: #0f172a; line-height: 1.2; }
+    [data-bs-theme="dark"] .stat-label { color: #94a3b8 !important; }
+    [data-bs-theme="dark"] .stat-value { color: #f1f5f9 !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1><i class="bi bi-bar-chart-line me-2 text-primary"></i>Finance</h1>
+</div>
+
+<!-- Summary cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4">
+        <div class="card p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="stat-icon bg-success bg-opacity-10 text-success">
+                    <i class="bi bi-cash-stack"></i>
+                </div>
+                <div>
+                    <div class="stat-label">Total Revenue</div>
+                    <div class="stat-value text-success">₱{{ "%.2f"|format(summary.revenue) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="card p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="stat-icon bg-danger bg-opacity-10 text-danger">
+                    <i class="bi bi-cart-dash"></i>
+                </div>
+                <div>
+                    <div class="stat-label">Total Expenses</div>
+                    <div class="stat-value text-danger">₱{{ "%.2f"|format(summary.expenses) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="card p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="stat-icon {% if summary.net >= 0 %}bg-primary bg-opacity-10 text-primary{% else %}bg-warning bg-opacity-10 text-warning{% endif %}">
+                    <i class="bi bi-graph-up-arrow"></i>
+                </div>
+                <div>
+                    <div class="stat-label">Net</div>
+                    <div class="stat-value {% if summary.net >= 0 %}text-primary{% else %}text-warning{% endif %}">
+                        ₱{{ "%.2f"|format(summary.net) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-3" id="financeTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="sales-tab" data-bs-toggle="tab" data-bs-target="#sales-pane"
+                type="button" role="tab">
+            <i class="bi bi-receipt me-1"></i>Sales
+            <span class="badge bg-secondary ms-1">{{ sales|length }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="expenses-tab" data-bs-toggle="tab" data-bs-target="#expenses-pane"
+                type="button" role="tab">
+            <i class="bi bi-box-arrow-in-down me-1"></i>Expenses
+            <span class="badge bg-secondary ms-1">{{ expenses|length }}</span>
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- Sales tab -->
+    <div class="tab-pane fade show active" id="sales-pane" role="tabpanel">
+        <div class="card">
+            <div class="card-body p-0">
+                {% if sales %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle small">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Customer</th>
+                                <th>Items</th>
+                                <th class="text-end">Total</th>
+                                <th class="text-end">Paid</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tx in sales %}
+                            <tr style="cursor:pointer"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#sale-detail-{{ tx.id }}">
+                                <td class="text-muted text-nowrap">{{ tx.created_at.strftime('%b %d, %Y %H:%M') }}</td>
+                                <td>{{ tx.customer.name if tx.customer else 'Walk-in' }}</td>
+                                <td class="text-muted">
+                                    {% for item in tx.items %}
+                                        {{ "%.1f"|format(item.quantity) }} {{ item.product_name_snapshot }}{% if not loop.last %}, {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td class="text-end fw-semibold">₱{{ "%.2f"|format(tx.total_amount) }}</td>
+                                <td class="text-end">₱{{ "%.2f"|format(tx.amount_paid) }}</td>
+                                <td>
+                                    <span class="badge badge-{{ tx.payment_status }}">
+                                        {{ tx.payment_status|capitalize }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr class="collapse" id="sale-detail-{{ tx.id }}">
+                                <td colspan="6" class="p-0">
+                                    <div class="bg-light border-bottom px-4 py-2">
+                                        <table class="table table-sm mb-0">
+                                            <thead>
+                                                <tr class="text-muted small">
+                                                    <th>Product</th>
+                                                    <th class="text-end">Unit Price</th>
+                                                    <th class="text-end">Qty</th>
+                                                    <th class="text-end">Subtotal</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for item in tx.items %}
+                                                <tr>
+                                                    <td>{{ item.product_name_snapshot }}</td>
+                                                    <td class="text-end">₱{{ "%.2f"|format(item.unit_price_snapshot) }}</td>
+                                                    <td class="text-end">{{ "%.1f"|format(item.quantity) }} {{ item.unit_snapshot }}</td>
+                                                    <td class="text-end fw-semibold">₱{{ "%.2f"|format(item.subtotal) }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-4 mb-0">No sales recorded yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Expenses tab -->
+    <div class="tab-pane fade" id="expenses-pane" role="tabpanel">
+        <div class="card">
+            <div class="card-body p-0">
+                {% if expenses %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle small">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date</th>
+                                <th>Type</th>
+                                <th>Vendor</th>
+                                <th>Items</th>
+                                <th class="text-end">Total</th>
+                                <th class="text-end">Paid</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for tx in expenses %}
+                            <tr style="cursor:pointer"
+                                data-bs-toggle="collapse"
+                                data-bs-target="#exp-detail-{{ tx.id }}">
+                                <td class="text-muted text-nowrap">{{ tx.created_at.strftime('%b %d, %Y %H:%M') }}</td>
+                                <td>
+                                    {% if tx.transaction_type == 'restock' %}
+                                        <span class="badge bg-primary bg-opacity-75">Product Restock</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">Raw Stock Restock</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ tx.vendor.name if tx.vendor else '—' }}</td>
+                                <td class="text-muted">
+                                    {% for item in tx.items %}
+                                        {{ "%.1f"|format(item.quantity) }} {{ item.product_name_snapshot }}{% if not loop.last %}, {% endif %}
+                                    {% endfor %}
+                                </td>
+                                <td class="text-end fw-semibold">₱{{ "%.2f"|format(tx.total_amount) }}</td>
+                                <td class="text-end">₱{{ "%.2f"|format(tx.amount_paid) }}</td>
+                                <td>
+                                    <span class="badge badge-{{ tx.payment_status }}">
+                                        {{ tx.payment_status|capitalize }}
+                                    </span>
+                                </td>
+                            </tr>
+                            <tr class="collapse" id="exp-detail-{{ tx.id }}">
+                                <td colspan="7" class="p-0">
+                                    <div class="bg-light border-bottom px-4 py-2">
+                                        <table class="table table-sm mb-0">
+                                            <thead>
+                                                <tr class="text-muted small">
+                                                    <th>Item</th>
+                                                    <th class="text-end">Unit Price</th>
+                                                    <th class="text-end">Qty</th>
+                                                    <th class="text-end">Subtotal</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for item in tx.items %}
+                                                <tr>
+                                                    <td>{{ item.product_name_snapshot }}</td>
+                                                    <td class="text-end">₱{{ "%.2f"|format(item.unit_price_snapshot) }}</td>
+                                                    <td class="text-end">{{ "%.1f"|format(item.quantity) }} {{ item.unit_snapshot }}</td>
+                                                    <td class="text-end fw-semibold">₱{{ "%.2f"|format(item.subtotal) }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center py-4 mb-0">No expenses recorded yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

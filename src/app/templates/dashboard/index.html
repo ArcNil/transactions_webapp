@@ -1,0 +1,195 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stat-icon {
+        width: 48px; height: 48px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.4rem; flex-shrink: 0;
+    }
+    .stat-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; font-weight: 600; }
+    .stat-value { font-size: 1.45rem; font-weight: 700; color: #0f172a; line-height: 1.2; }</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex align-items-center justify-content-between">
+    <h1><i class="bi bi-speedometer2 me-2 text-primary"></i>Dashboard</h1>
+    <span class="text-muted small">{{ now.strftime('%B %d, %Y') }}</span>
+</div>
+
+<!-- Stat cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4">
+        <div class="card p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="stat-icon bg-primary bg-opacity-10 text-primary">
+                    <i class="bi bi-cash-stack"></i>
+                </div>
+                <div>
+                    <div class="stat-label">Total Revenue</div>
+                    <div class="stat-value">₱{{ "%.2f"|format(stats.total_revenue) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="card p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="stat-icon bg-success bg-opacity-10 text-success">
+                    <i class="bi bi-calendar-day"></i>
+                </div>
+                <div>
+                    <div class="stat-label">Today's Revenue</div>
+                    <div class="stat-value">₱{{ "%.2f"|format(stats.today_revenue) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="card p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="stat-icon bg-info bg-opacity-10 text-info">
+                    <i class="bi bi-receipt"></i>
+                </div>
+                <div>
+                    <div class="stat-label">Today's Sales</div>
+                    <div class="stat-value">{{ stats.today_tx_count }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Financial summary -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-6">
+        <div class="card p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="stat-icon bg-danger bg-opacity-10 text-danger">
+                    <i class="bi bi-cart-dash"></i>
+                </div>
+                <div>
+                    <div class="stat-label">Total Expenses</div>
+                    <div class="stat-value text-danger">₱{{ "%.2f"|format(summary.expenses) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-6">
+        <div class="card p-3">
+            <div class="d-flex align-items-start gap-3">
+                <div class="stat-icon {% if summary.net >= 0 %}bg-primary bg-opacity-10 text-primary{% else %}bg-warning bg-opacity-10 text-warning{% endif %}">
+                    <i class="bi bi-graph-up-arrow"></i>
+                </div>
+                <div>
+                    <div class="stat-label">Net</div>
+                    <div class="stat-value {% if summary.net >= 0 %}text-primary{% else %}text-warning{% endif %}">
+                        ₱{{ "%.2f"|format(summary.net) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart -->
+<div class="card mb-4">
+    <div class="card-header bg-white border-bottom py-2">
+        <strong class="small text-muted text-uppercase">Last 7 Days</strong>
+    </div>
+    <div class="card-body">
+        <canvas id="financeChart" height="100"></canvas>
+    </div>
+</div>
+
+<!-- Transactions link -->
+<div class="text-center py-2">
+    <a href="{{ url_for('transactions.index') }}" class="btn btn-outline-primary">
+        <i class="bi bi-receipt me-1"></i>View Transactions
+    </a>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script>
+const isDark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+const gridColor  = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)';
+const tickColor  = isDark ? '#94a3b8' : '#64748b';
+const lineColor  = isDark ? '#38bdf8' : '#0284c7';
+const fillColor  = isDark ? 'rgba(56,189,248,.12)' : 'rgba(2,132,199,.1)';
+
+fetch('/api/dashboard/chart')
+    .then(r => r.json())
+    .then(({ labels, revenue, expenses, net }) => {
+        const expColor  = isDark ? '#f87171' : '#dc2626';
+        const expFill   = isDark ? 'rgba(248,113,113,.10)' : 'rgba(220,38,38,.07)';
+        const netColor  = isDark ? '#4ade80' : '#16a34a';
+        const netFill   = isDark ? 'rgba(74,222,128,.10)' : 'rgba(22,163,74,.07)';
+
+        new Chart(document.getElementById('financeChart'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Revenue',
+                        data: revenue,
+                        borderColor: lineColor,
+                        backgroundColor: fillColor,
+                        borderWidth: 2,
+                        tension: 0.35,
+                        fill: false,
+                        pointBackgroundColor: lineColor,
+                    },
+                    {
+                        label: 'Expenses',
+                        data: expenses,
+                        borderColor: expColor,
+                        backgroundColor: expFill,
+                        borderWidth: 2,
+                        tension: 0.35,
+                        fill: false,
+                        pointBackgroundColor: expColor,
+                    },
+                    {
+                        label: 'Net',
+                        data: net,
+                        borderColor: netColor,
+                        backgroundColor: netFill,
+                        borderWidth: 2,
+                        tension: 0.35,
+                        fill: false,
+                        pointBackgroundColor: netColor,
+                        borderDash: [4, 3],
+                    },
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: true,
+                        labels: { color: tickColor, boxWidth: 12, padding: 16 },
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: gridColor },
+                        ticks: { color: tickColor },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: gridColor },
+                        ticks: {
+                            color: tickColor,
+                            callback: v => '₱' + v.toLocaleString()
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}
