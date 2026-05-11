@@ -179,6 +179,20 @@ def test_stock_edit_with_blank_name_flashes_error(logged_in_client, sample_stock
     assert sample_stock_item.name == "Purified Water"
 
 
+def test_stock_edit_updates_stock_item(logged_in_client, sample_stock_item, db_session):
+    item_id = sample_stock_item.id
+    response = logged_in_client.post(
+        f"/stock/{item_id}/edit",
+        data={"name": "Filtered Water", "unit": "liter", "vendor_id": 0},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"updated" in response.data
+
+    db_session.refresh(sample_stock_item)
+    assert sample_stock_item.name == "Filtered Water"
+
+
 def test_stock_edit_with_blank_unit_flashes_error(logged_in_client, sample_stock_item, db_session):
     item_id = sample_stock_item.id
     response = logged_in_client.post(

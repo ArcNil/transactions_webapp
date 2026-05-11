@@ -1,5 +1,6 @@
 import pytest
 from decimal import Decimal
+from unittest.mock import patch
 
 from app import db
 from app.models.product import Product
@@ -90,6 +91,42 @@ class TestUpsertIngredient:
         with pytest.raises(ProductError, match="Stock item not found"):
             upsert_ingredient(sample_product, 99999, "1.0", user_id=1, username="admin")
 
+    def test_rollback_called_on_commit_error_update_branch(
+        self, app, sample_product, sample_stock_item, db_session
+    ):
+        ingredient = ProductIngredient(
+            product_id=sample_product.id,
+            stock_item_id=sample_stock_item.id,
+            quantity=Decimal("1.0"),
+        )
+        db_session.add(ingredient)
+        db_session.commit()
+
+        with patch(
+            "app.services.product_service.db.session.commit",
+            side_effect=RuntimeError("db error"),
+        ):
+            with patch("app.services.product_service.db.session.rollback") as mock_rollback:
+                with pytest.raises(RuntimeError, match="db error"):
+                    upsert_ingredient(
+                        sample_product, sample_stock_item.id, "3.0", user_id=1, username="admin"
+                    )
+                mock_rollback.assert_called_once()
+
+    def test_rollback_called_on_commit_error_insert_branch(
+        self, app, sample_product, sample_stock_item, db_session
+    ):
+        with patch(
+            "app.services.product_service.db.session.commit",
+            side_effect=RuntimeError("db error"),
+        ):
+            with patch("app.services.product_service.db.session.rollback") as mock_rollback:
+                with pytest.raises(RuntimeError, match="db error"):
+                    upsert_ingredient(
+                        sample_product, sample_stock_item.id, "2.0", user_id=1, username="admin"
+                    )
+                mock_rollback.assert_called_once()
+
 
 class TestAddProduct:
     def test_happy_path_creates_and_persists_product(self, app, db_session):
@@ -106,6 +143,18 @@ class TestAddProduct:
         product = add_product(form, user_id=1, username="admin")
 
         assert product.vendor_id is None
+
+    def test_rollback_called_on_commit_error(self, app, db_session):
+        form = MockProductForm(name="Error Product", unit="unit", price=Decimal("10.00"))
+
+        with patch(
+            "app.services.product_service.db.session.commit",
+            side_effect=RuntimeError("db error"),
+        ):
+            with patch("app.services.product_service.db.session.rollback") as mock_rollback:
+                with pytest.raises(RuntimeError, match="db error"):
+                    add_product(form, user_id=1, username="admin")
+                mock_rollback.assert_called_once()
 
 
 class TestEditProduct:
@@ -134,6 +183,18 @@ class TestEditProduct:
 
         assert sample_product.vendor_id is None
 
+    def test_rollback_called_on_commit_error(self, app, sample_product, db_session):
+        form = MockProductForm(name="Updated Name", unit="bottle", price=Decimal("75.00"))
+
+        with patch(
+            "app.services.product_service.db.session.commit",
+            side_effect=RuntimeError("db error"),
+        ):
+            with patch("app.services.product_service.db.session.rollback") as mock_rollback:
+                with pytest.raises(RuntimeError, match="db error"):
+                    edit_product(sample_product, form, user_id=1, username="admin")
+                mock_rollback.assert_called_once()
+
 
 class TestDeactivateProduct:
     def test_sets_is_active_false(self, app, sample_product, db_session):
@@ -143,6 +204,16 @@ class TestDeactivateProduct:
         db_session.refresh(sample_product)
 
         assert sample_product.is_active is False
+
+    def test_rollback_called_on_commit_error(self, app, sample_product, db_session):
+        with patch(
+            "app.services.product_service.db.session.commit",
+            side_effect=RuntimeError("db error"),
+        ):
+            with patch("app.services.product_service.db.session.rollback") as mock_rollback:
+                with pytest.raises(RuntimeError, match="db error"):
+                    deactivate_product(sample_product, user_id=1, username="admin")
+                mock_rollback.assert_called_once()
 
 
 class TestTogglePos:
@@ -178,6 +249,26 @@ class TestTogglePos:
 
         assert product.show_in_pos is True
 
+    def test_rollback_called_on_commit_error(self, app, db_session):
+        product = Product(
+            name="Toggle Error Test",
+            unit="unit",
+            price=Decimal("10.00"),
+            stock=Decimal("5"),
+            show_in_pos=True,
+        )
+        db_session.add(product)
+        db_session.commit()
+
+        with patch(
+            "app.services.product_service.db.session.commit",
+            side_effect=RuntimeError("db error"),
+        ):
+            with patch("app.services.product_service.db.session.rollback") as mock_rollback:
+                with pytest.raises(RuntimeError, match="db error"):
+                    toggle_pos(product, user_id=1, username="admin")
+                mock_rollback.assert_called_once()
+
 
 class TestDeleteIngredient:
     def test_happy_path_deletes_ingredient_and_returns_names(
@@ -200,3 +291,24 @@ class TestDeleteIngredient:
     def test_raises_product_error_when_ingredient_not_found(self, app):
         with pytest.raises(ProductError, match="Ingredient not found."):
             delete_ingredient(product_id=99999, ingredient_id=99999, user_id=1, username="u")
+
+    def test_rollback_called_on_commit_error(
+        self, app, sample_product, sample_stock_item, db_session
+    ):
+        ingredient = ProductIngredient(
+            product_id=sample_product.id,
+            stock_item_id=sample_stock_item.id,
+            quantity=Decimal("1.0"),
+        )
+        db_session.add(ingredient)
+        db_session.commit()
+        ingredient_id = ingredient.id
+
+        with patch(
+            "app.services.product_service.db.session.commit",
+            side_effect=RuntimeError("db error"),
+        ):
+            with patch("app.services.product_service.db.session.rollback") as mock_rollback:
+                with pytest.raises(RuntimeError, match="db error"):
+                    delete_ingredient(sample_product.id, ingredient_id, user_id=1, username="admin")
+                mock_rollback.assert_called_once()

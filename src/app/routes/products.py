@@ -45,7 +45,7 @@ def index():
                 "id": ing.id,
                 "stock_item_name": ing.stock_item.name,
                 "stock_item_unit": ing.stock_item.unit,
-                "quantity": float(ing.quantity),
+                "quantity": str(ing.quantity),
             }
             for ing in p.ingredients
         ]

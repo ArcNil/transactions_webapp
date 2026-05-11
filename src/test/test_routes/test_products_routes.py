@@ -248,3 +248,16 @@ def test_products_ingredient_delete_requires_login(client):
     response = client.post("/products/1/ingredients/1/delete")
     assert response.status_code == 302
     assert "/login" in response.headers["Location"]
+
+
+def test_products_toggle_pos_nonexistent_product_returns_404(logged_in_client):
+    response = logged_in_client.post("/products/99999/toggle_pos")
+    assert response.status_code == 404
+
+
+def test_products_ingredient_add_nonexistent_product_returns_404(logged_in_client):
+    response = logged_in_client.post(
+        "/products/99999/ingredients/add",
+        data={"stock_item_id": "1", "quantity": "1.0"},
+    )
+    assert response.status_code == 404

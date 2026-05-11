@@ -27,7 +27,7 @@ def upsert_ingredient(
     Raises ProductError for invalid input or a missing stock item.
     """
     try:
-        stock_item_id = int(stock_item_id)
+        stock_item_id_int = int(stock_item_id)
         qty = Decimal(qty_str)
     except (ValueError, InvalidOperation):
         raise ProductError("Invalid ingredient data.")
@@ -35,7 +35,7 @@ def upsert_ingredient(
     if qty <= 0:
         raise ProductError("Quantity must be greater than 0.")
 
-    stock_item = db.session.get(StockItem, stock_item_id)
+    stock_item = db.session.get(StockItem, stock_item_id_int)
     if not stock_item:
         raise ProductError("Stock item not found.")
 
@@ -144,7 +144,7 @@ def delete_ingredient(
     Remove a ProductIngredient row.
 
     Returns a (product_name, stock_name) tuple on success.
-    Raises a 404 via first_or_404 if the ingredient does not belong to the product.
+    Raises ProductError if the ingredient does not belong to the product.
     """
     ingredient = ProductIngredient.query.filter_by(
         id=ingredient_id, product_id=product_id
