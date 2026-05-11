@@ -312,3 +312,4 @@ class TestDeleteIngredient:
                 with pytest.raises(RuntimeError, match="db error"):
                     delete_ingredient(sample_product.id, ingredient_id, user_id=1, username="admin")
                 mock_rollback.assert_called_once()
+
