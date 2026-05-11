@@ -1,14 +1,18 @@
 import click
+import os
+import sys
 from app import create_app, db
 
 app = create_app()
 
 
 @app.cli.command("seed")
-@click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True,
-              help="Password for the default superuser account.")
-def seed(password):
+def seed():
     """Create the default superuser if not present."""
+    password = os.environ.get("SEED_ADMIN_PASSWORD")
+    if not password:
+        click.echo("Error: SEED_ADMIN_PASSWORD environment variable is not set.", err=True)
+        sys.exit(1)
     from app.models.user import User
     from werkzeug.security import generate_password_hash
 

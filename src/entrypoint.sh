@@ -24,20 +24,7 @@ fi
 flask db upgrade
 
 echo "==> Seeding default user..."
-# Skip interactive seed if the admin user already exists (avoids prompt failures without a TTY)
-ADMIN_EXISTS=$(python - <<'PYEOF'
-import sys
-from app import create_app, db
-from app.models.user import User
-app = create_app()
-with app.app_context():
-    u = User.query.filter_by(username="admin").first()
-    print("yes" if u else "no")
-PYEOF
-)
-if [ "$ADMIN_EXISTS" != "yes" ]; then
-    flask seed
-fi
+flask seed
 
 echo "==> Starting server..."
 exec flask run --host=0.0.0.0 --port=5000
