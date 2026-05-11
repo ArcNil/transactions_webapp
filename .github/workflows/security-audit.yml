@@ -2,9 +2,9 @@ name: Security Audit
 
 on:
   push:
-    branches: [main, test]
+    branches: [main, develop]
   pull_request:
-    branches: [main, test]
+    branches: [main, develop]
 
 jobs:
   trivy:

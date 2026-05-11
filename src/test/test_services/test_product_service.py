@@ -313,3 +313,4 @@ class TestDeleteIngredient:
                     delete_ingredient(sample_product.id, ingredient_id, user_id=1, username="admin")
                 mock_rollback.assert_called_once()
 
+
