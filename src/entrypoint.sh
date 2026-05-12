@@ -27,4 +27,4 @@ echo "==> Seeding default user..."
 flask seed
 
 echo "==> Starting server..."
-exec flask run --host=0.0.0.0 --port=5000
+exec gunicorn --bind 0.0.0.0:5000 --workers 2 main:app
