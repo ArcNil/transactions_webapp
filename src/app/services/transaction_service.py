@@ -110,33 +110,16 @@ def _parse_items(items_data: list, check_stock: bool = False) -> tuple[list, Dec
     return line_items, total
 
 
-def _resolve_amount_paid(
-    payment_status: str, total: Decimal, amount_paid_raw: str
-) -> Decimal:
-    if payment_status == "full":
-        return total
-    if payment_status == "unpaid":
-        return Decimal("0")
-    try:
-        return Decimal(amount_paid_raw)
-    except (InvalidOperation, TypeError):
-        return Decimal("0")
-
-
 def create_transaction(
     items_raw: str,
     customer_id: str | None,
-    payment_status: str,
-    amount_paid_raw: str,
 ) -> Transaction:
     """
     Parse the cart payload and persist a new Transaction with its items.
 
+    Payment entries are recorded separately via ledger_service.
     Raises TransactionError if the payload is invalid.
     """
-    if payment_status not in ("full", "partial", "unpaid"):
-        raise TransactionError("Invalid payment status.")
-
     try:
         items_data = json.loads(items_raw)
     except (ValueError, TypeError):
@@ -146,14 +129,11 @@ def create_transaction(
         raise TransactionError("Cart is empty.")
 
     line_items, total = _parse_items(items_data, check_stock=True)
-    amount_paid = _resolve_amount_paid(payment_status, total, amount_paid_raw)
 
     tx = Transaction(
         transaction_type="sale",
         customer_id=int(customer_id) if customer_id else None,
         total_amount=total,
-        amount_paid=amount_paid,
-        payment_status=payment_status,
     )
     db.session.add(tx)
     db.session.flush()
@@ -200,8 +180,6 @@ def update_transaction(
     tx: Transaction,
     items_raw: str,
     customer_id: str | None,
-    payment_status: str,
-    amount_paid_raw: str,
 ) -> Transaction:
     """
     Reconcile items and update an existing Transaction.
@@ -210,11 +188,9 @@ def update_transaction(
     - Items absent from the submission are deleted.
     - New items are snapshotted from the current product price.
 
+    Payment entries are managed separately via ledger_service.
     Raises TransactionError if the payload is invalid.
     """
-    if payment_status not in ("full", "partial", "unpaid"):
-        raise TransactionError("Invalid payment status.")
-
     try:
         items_data = json.loads(items_raw)
     except (ValueError, TypeError):
@@ -338,8 +314,6 @@ def update_transaction(
 
     tx.total_amount = total
     tx.customer_id = int(customer_id) if customer_id else None
-    tx.amount_paid = _resolve_amount_paid(payment_status, total, amount_paid_raw)
-    tx.payment_status = payment_status
 
     try:
         db.session.commit()
@@ -352,17 +326,14 @@ def update_transaction(
 def create_restock(
     items_raw: str,
     vendor_id: str,
-    payment_status: str,
-    amount_paid_raw: str,
 ) -> Transaction:
     """
     Record a restock transaction (admin buying from a vendor).
 
     Increments stock for each catalog product in the cart.
+    Payment entries are recorded separately via ledger_service.
     Raises TransactionError if the payload is invalid.
     """
-    if payment_status not in ("full", "partial", "unpaid"):
-        raise TransactionError("Invalid payment status.")
 
     try:
         vid = int(vendor_id)
@@ -416,14 +387,10 @@ def create_restock(
             "subtotal": subtotal,
         })
 
-    amount_paid = _resolve_amount_paid(payment_status, total, amount_paid_raw)
-
     tx = Transaction(
         transaction_type="restock",
         vendor_id=vid,
         total_amount=total,
-        amount_paid=amount_paid,
-        payment_status=payment_status,
     )
     db.session.add(tx)
     db.session.flush()
@@ -454,19 +421,15 @@ def create_restock(
 def create_stock_restock(
     items_raw: str,
     vendor_id: str,
-    payment_status: str,
-    amount_paid_raw: str,
 ) -> Transaction:
     """
     Record a stock_restock transaction (admin buying raw stock from a vendor).
 
     Each line item references a StockItem; quantity is added to stock_item.quantity.
+    Payment entries are recorded separately via ledger_service.
     Raises TransactionError if the payload is invalid.
     """
     from app.models.stock import StockItem
-
-    if payment_status not in ("full", "partial", "unpaid"):
-        raise TransactionError("Invalid payment status.")
 
     try:
         vid = int(vendor_id)
@@ -512,14 +475,10 @@ def create_stock_restock(
             "subtotal": subtotal,
         })
 
-    amount_paid = _resolve_amount_paid(payment_status, total, amount_paid_raw)
-
     tx = Transaction(
         transaction_type="stock_restock",
         vendor_id=vid,
         total_amount=total,
-        amount_paid=amount_paid,
-        payment_status=payment_status,
     )
     db.session.add(tx)
     db.session.flush()
@@ -541,6 +500,100 @@ def create_stock_restock(
         db.session.add(item)
 
     try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return tx
+
+
+def create_product_restock(
+    items_raw: str,
+    vendor_id: str,
+) -> Transaction:
+    """
+    Record a stock_restock transaction where each line item is a Product
+    (with ingredients).  Restocking N units of a product adds
+    ingredient.quantity * N to each linked StockItem.
+
+    Payload format: [{product_id, quantity, unit_price}, ...]
+    Payment entries are recorded separately via ledger_service.
+    Raises TransactionError if the payload is invalid.
+    """
+    try:
+        vid = int(vendor_id)
+    except (ValueError, TypeError):
+        raise TransactionError("A vendor must be selected.")
+
+    vendor = db.session.get(Vendor, vid)
+    if not vendor:
+        raise TransactionError("Vendor not found.")
+
+    try:
+        items_data = json.loads(items_raw)
+    except (ValueError, TypeError):
+        raise TransactionError("Invalid cart data.")
+
+    if not items_data:
+        raise TransactionError("Cart is empty.")
+
+    line_items = []
+    total = Decimal("0")
+
+    for entry in items_data:
+        try:
+            product_id = int(entry["product_id"])
+            quantity = Decimal(str(entry["quantity"]))
+            unit_price = Decimal(str(entry["unit_price"]))
+        except (KeyError, ValueError, TypeError, InvalidOperation):
+            raise TransactionError("Invalid item data.")
+
+        if quantity <= 0 or unit_price < 0:
+            raise TransactionError("Quantity must be > 0 and price must be >= 0.")
+
+        product = db.session.get(Product, product_id)
+        if not product:
+            raise TransactionError(f"Product #{product_id} not found.")
+        # Products without ingredients are valid (e.g. services/fees); they record
+        # the transaction but do not fan out to raw stock.
+
+        subtotal = unit_price * quantity
+        total += subtotal
+        line_items.append({
+            "product": product,
+            "quantity": quantity,
+            "unit_price": unit_price,
+            "subtotal": subtotal,
+        })
+
+    try:
+        tx = Transaction(
+            transaction_type="product_restock",
+            vendor_id=vid,
+            total_amount=total,
+        )
+        db.session.add(tx)
+        db.session.flush()
+
+        for li in line_items:
+            p = li["product"]
+            qty = li["quantity"]
+            # Increment each linked raw stock item proportionally
+            for ing in p.ingredients:
+                ing.stock_item.quantity += ing.quantity * qty
+
+            item = TransactionItem(
+                transaction_id=tx.id,
+                product_id=p.id,
+                stock_item_id=None,
+                product_name_snapshot=p.name,
+                unit_snapshot=p.unit,
+                unit_price_snapshot=li["unit_price"],
+                quantity=qty,
+                subtotal=li["subtotal"],
+            )
+            db.session.add(item)
+
         db.session.commit()
     except Exception:
         db.session.rollback()

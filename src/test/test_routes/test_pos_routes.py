@@ -226,61 +226,6 @@ def test_pos_save_with_custom_item_zero_price_flashes_error(logged_in_client):
     assert b"Custom item requires a name, unit, and price" in response.data
 
 
-def test_pos_save_with_invalid_payment_status_flashes_error(logged_in_client):
-    response = logged_in_client.post(
-        "/pos/save",
-        data={
-            "customer_id": "",
-            "payment_status": "invalid_status",
-            "amount_paid": "0",
-            "items": json.dumps([{"product_id": 1, "quantity": "1"}]),
-        },
-        follow_redirects=True,
-    )
-    assert response.status_code == 200
-    assert b"Invalid payment status." in response.data
-
-
-def test_pos_save_with_full_payment_sets_amount_paid_equal_to_total(
-    logged_in_client, sample_product, db_session
-):
-    items = json.dumps([{"product_id": sample_product.id, "quantity": "3"}])
-    logged_in_client.post(
-        "/pos/save",
-        data={
-            "customer_id": "",
-            "payment_status": "full",
-            "amount_paid": "0",  # should be overridden to total
-            "items": items,
-        },
-    )
-
-    tx = Transaction.query.first()
-    # 3 × 50.00 = 150.00
-    expected_total = Decimal("3") * sample_product.price
-    assert tx.total_amount == expected_total
-    assert tx.amount_paid == tx.total_amount
-
-
-def test_pos_save_with_unpaid_sets_amount_paid_to_zero(
-    logged_in_client, sample_product, db_session
-):
-    items = json.dumps([{"product_id": sample_product.id, "quantity": "1"}])
-    logged_in_client.post(
-        "/pos/save",
-        data={
-            "customer_id": "",
-            "payment_status": "unpaid",
-            "amount_paid": "999",  # should be overridden to 0
-            "items": items,
-        },
-    )
-
-    tx = Transaction.query.first()
-    assert tx.payment_status == "unpaid"
-    assert tx.amount_paid == Decimal("0")
-
-
 from app.models.product import Product
 
 
@@ -299,24 +244,6 @@ def test_pos_save_with_customer_id_links_transaction_to_customer(
     )
     tx = Transaction.query.first()
     assert tx.customer_id == sample_customer.id
-
-
-def test_pos_save_with_partial_payment_stores_correct_amount_paid(
-    logged_in_client, sample_product, db_session
-):
-    items = json.dumps([{"product_id": sample_product.id, "quantity": "2"}])
-    logged_in_client.post(
-        "/pos/save",
-        data={
-            "customer_id": "",
-            "payment_status": "partial",
-            "amount_paid": "60.00",
-            "items": items,
-        },
-    )
-    tx = Transaction.query.first()
-    assert tx.amount_paid == Decimal("60.00")
-    assert tx.payment_status == "partial"
 
 
 def test_pos_index_only_shows_active_products(

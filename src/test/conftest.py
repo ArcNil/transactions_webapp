@@ -21,7 +21,7 @@ from app import db as _db
 from app.models.user import User
 from app.models.product import Product
 from app.models.customer import Customer
-from app.models.transaction import Transaction, TransactionItem
+from app.models.transaction import Transaction, TransactionItem, TransactionLedgerEntry
 from app.models.vendor import Vendor
 from app.models.stock import StockItem
 
@@ -122,8 +122,6 @@ def sample_transaction(db_session, sample_product):
         customer_id=None,
         transaction_type="sale",
         total_amount=str(Decimal(sample_product.price) * 2),
-        amount_paid=str(Decimal(sample_product.price) * 2),
-        payment_status="full",
     )
     db_session.add(tx)
     db_session.flush()

@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionLedgerEntry
 from app.services.dashboard_service import get_chart_data, get_recent_transactions, get_stats
 
 
@@ -27,17 +27,23 @@ class TestGetStats:
         assert result["today_tx_count"] == 1
 
     def test_sums_total_revenue_across_all_transactions(self, app, sample_transaction, db_session):
+        entry = TransactionLedgerEntry(
+            transaction_id=sample_transaction.id,
+            entry_type="payment",
+            amount=sample_transaction.total_amount,
+        )
+        db_session.add(entry)
+        db_session.commit()
+
         result = get_stats()
 
-        assert result["total_revenue"] == float(sample_transaction.amount_paid)
+        assert result["total_revenue"] == float(sample_transaction.total_amount)
 
     def test_excludes_yesterday_from_today_revenue(self, app, db_session):
         yesterday = datetime.now(timezone.utc) - timedelta(days=1)
         tx = Transaction(
             transaction_type="sale",
             total_amount="200.00",
-            amount_paid="200.00",
-            payment_status="full",
             created_at=yesterday,
         )
         db_session.add(tx)
@@ -49,9 +55,15 @@ class TestGetStats:
         assert result["today_tx_count"] == 0
 
     def test_today_revenue_sums_only_todays_paid_amounts(self, app, db_session):
-        tx1 = Transaction(transaction_type="sale", total_amount="75.00", amount_paid="75.00", payment_status="full")
-        tx2 = Transaction(transaction_type="sale", total_amount="25.00", amount_paid="25.00", payment_status="full")
+        tx1 = Transaction(transaction_type="sale", total_amount="75.00")
+        tx2 = Transaction(transaction_type="sale", total_amount="25.00")
         db_session.add_all([tx1, tx2])
+        db_session.commit()
+
+        db_session.add_all([
+            TransactionLedgerEntry(transaction_id=tx1.id, entry_type="payment", amount="75.00"),
+            TransactionLedgerEntry(transaction_id=tx2.id, entry_type="payment", amount="25.00"),
+        ])
         db_session.commit()
 
         result = get_stats()
@@ -65,15 +77,11 @@ class TestGetRecentTransactions:
         earlier = Transaction(
             transaction_type="sale",
             total_amount="50.00",
-            amount_paid="50.00",
-            payment_status="full",
             created_at=datetime.now(timezone.utc) - timedelta(hours=2),
         )
         later = Transaction(
             transaction_type="sale",
             total_amount="100.00",
-            amount_paid="100.00",
-            payment_status="full",
             created_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
         db_session.add_all([earlier, later])
@@ -87,7 +95,7 @@ class TestGetRecentTransactions:
     def test_respects_limit_parameter(self, app, db_session):
         for _ in range(5):
             db_session.add(
-                Transaction(transaction_type="sale", total_amount="10.00", amount_paid="10.00", payment_status="full")
+                Transaction(transaction_type="sale", total_amount="10.00")
             )
         db_session.commit()
 
@@ -130,8 +138,11 @@ class TestGetChartData:
             assert isinstance(value, float)
 
     def test_chart_data_places_revenue_in_correct_day_bucket(self, app, db_session):
-        tx = Transaction(transaction_type="sale", total_amount="150.00", amount_paid="150.00", payment_status="full")
+        tx = Transaction(transaction_type="sale", total_amount="150.00")
         db_session.add(tx)
+        db_session.commit()
+
+        db_session.add(TransactionLedgerEntry(transaction_id=tx.id, entry_type="payment", amount="150.00"))
         db_session.commit()
 
         result = get_chart_data()

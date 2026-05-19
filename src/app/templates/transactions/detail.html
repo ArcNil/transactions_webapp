@@ -1,0 +1,561 @@
+{% extends 'base.html' %}
+{% block title %}Transaction #{{ tx.id }}{% endblock %}
+
+{% block extra_css %}
+<link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet" integrity="sha384-piG3EtH1fBnPi68q4spy+Qgpb0dHK1D1dwk0GaHwFkvmUxYi526bBlk3xJcjEBsD" crossorigin="anonymous">
+<style>
+/* ── Tom Select dark-theme fixes ── */
+[data-bs-theme="dark"] .ts-wrapper .ts-control,
+[data-bs-theme="dark"] .ts-wrapper.single.input-active .ts-control {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+[data-bs-theme="dark"] .ts-wrapper .ts-control input,
+[data-bs-theme="dark"] .ts-wrapper .ts-control input::placeholder {
+    color: var(--bs-body-color);
+    opacity: 1;
+}
+[data-bs-theme="dark"] .ts-dropdown {
+    background-color: var(--bs-body-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+[data-bs-theme="dark"] .ts-dropdown .option {
+    color: var(--bs-body-color);
+}
+[data-bs-theme="dark"] .ts-dropdown .option.active {
+    background-color: var(--bs-primary);
+    color: #fff;
+}
+[data-bs-theme="dark"] .ts-dropdown input {
+    background-color: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex align-items-center gap-3 flex-wrap">
+    <a href="{{ url_for('transactions.index') }}" class="btn btn-sm btn-light">
+        <i class="bi bi-arrow-left me-1"></i>Back
+    </a>
+    <h1 class="mb-0">
+        <i class="bi bi-receipt me-2 text-primary"></i>Transaction #{{ tx.id }}
+    </h1>
+    <div class="ms-auto d-flex align-items-center gap-2">
+        {% if tx.is_closed %}
+            <span class="badge bg-secondary fs-6">Closed</span>
+            <form method="POST" action="{{ url_for('transactions.reopen', tx_id=tx.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-unlock me-1"></i>Reopen
+                </button>
+            </form>
+        {% else %}
+            {% set status = tx.effective_status %}
+            {% if status == 'Settled' %}
+                <span class="badge bg-success fs-6">Settled</span>
+            {% elif status == 'Overpaid' %}
+                <span class="badge bg-warning text-dark fs-6">Overpaid</span>
+            {% else %}
+                <span class="badge bg-danger fs-6">Balance owed</span>
+            {% endif %}
+            <form method="POST" action="{{ url_for('transactions.close', tx_id=tx.id) }}" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-lock me-1"></i>Close
+                </button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Transaction summary -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small">Date</div>
+                <div class="fw-semibold">{{ tx.created_at.strftime('%b %d, %Y %H:%M') }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small">
+                    {% if tx.transaction_type == 'sale' %}Customer{% else %}Vendor{% endif %}
+                </div>
+                <div class="fw-semibold">
+                    {% if tx.transaction_type == 'sale' %}
+                        {{ tx.customer.name if tx.customer else 'Walk-in' }}
+                    {% else %}
+                        {{ tx.vendor.name if tx.vendor else '—' }}
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body">
+                <div class="text-muted small">Total</div>
+                <div class="fw-bold fs-5">₱{{ "%.2f"|format(tx.total_amount) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        {% set bal = tx.balance %}
+        {% if bal > 0 %}{% set bal_border = 'border-warning' %}
+        {% elif bal < 0 %}{% set bal_border = 'border-danger' %}
+        {% else %}{% set bal_border = 'border-success' %}{% endif %}
+        <div class="card h-100 border-0 shadow-sm {{ bal_border }}">
+            <div class="card-body">
+                <div class="text-muted small">Balance</div>
+                {% if bal > 0 %}
+                    <div class="fw-bold fs-5 text-warning">+₱{{ "%.2f"|format(bal) }}</div>
+                    <div class="text-warning small"><i class="bi bi-exclamation-circle me-1"></i>Overpaid — owe customer ₱{{ "%.2f"|format(bal) }}</div>
+                {% elif bal < 0 %}
+                    <div class="fw-bold fs-5 text-danger">−₱{{ "%.2f"|format(bal|abs) }}</div>
+                    <div class="text-danger small"><i class="bi bi-clock me-1"></i>Balance owed: ₱{{ "%.2f"|format(bal|abs) }}</div>
+                {% else %}
+                    <div class="fw-bold fs-5 text-success">₱0.00</div>
+                    <div class="text-success small"><i class="bi bi-check-circle me-1"></i>Settled</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Line items -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <span class="fw-semibold"><i class="bi bi-list-ul me-1"></i>Items</span>
+        {% if tx.transaction_type == 'sale' and not tx.is_closed %}
+        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editTxModal">
+            <i class="bi bi-pencil me-1"></i>Edit items
+        </button>
+        {% endif %}
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0 align-middle small">
+            <thead class="table-light">
+                <tr>
+                    <th>Product</th>
+                    <th class="text-end">Unit Price</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in tx.items %}
+                <tr>
+                    <td>{{ item.product_name_snapshot }}</td>
+                    <td class="text-end">₱{{ "%.2f"|format(item.unit_price_snapshot) }}</td>
+                    <td class="text-end">{{ "%.1f"|format(item.quantity) }} {{ item.unit_snapshot }}</td>
+                    <td class="text-end fw-semibold">₱{{ "%.2f"|format(item.subtotal) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot class="table-light">
+                <tr>
+                    <td colspan="3" class="text-end fw-semibold">Total</td>
+                    <td class="text-end fw-bold">₱{{ "%.2f"|format(tx.total_amount) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+
+<!-- Payment ledger -->
+<div class="card shadow-sm mb-4">
+    <div class="card-header fw-semibold">
+        <i class="bi bi-journal-text me-1"></i>Payment Ledger
+    </div>
+    <div class="card-body p-0">
+        {% if tx.ledger_entries %}
+        <table class="table table-sm mb-0 align-middle small">
+            <thead class="table-light">
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Note</th>
+                    <th class="text-end">Amount</th>
+                    <th class="text-end">Running Balance</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set ns = namespace(running = -tx.total_amount) %}
+                {% for entry in tx.ledger_entries %}
+                    {% if entry.entry_type == 'payment' %}
+                        {% set ns.running = ns.running + entry.amount %}
+                    {% elif entry.entry_type in ('change', 'refund', 'discount') %}
+                        {% set ns.running = ns.running - entry.amount %}
+                    {% elif entry.entry_type == 'adjustment' %}
+                        {% set ns.running = ns.running + entry.amount %}
+                    {% endif %}
+                <tr>
+                    <td class="text-muted text-nowrap">{{ entry.created_at.strftime('%b %d, %H:%M') }}</td>
+                    <td>
+                        {% if entry.entry_type == 'payment' %}
+                            <span class="badge bg-success bg-opacity-75">Payment</span>
+                        {% elif entry.entry_type == 'change' %}
+                            <span class="badge bg-warning text-dark">Change</span>
+                        {% elif entry.entry_type == 'refund' %}
+                            <span class="badge bg-info text-dark">Refund</span>
+                        {% elif entry.entry_type == 'discount' %}
+                            <span class="badge bg-secondary">Discount</span>
+                        {% elif entry.entry_type == 'adjustment' %}
+                            <span class="badge bg-primary bg-opacity-75">Adjustment</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-muted">{{ entry.note or '' }}</td>
+                    {% if entry.entry_type == 'payment' %}
+                        {% set amt_class = 'text-success' %}
+                        {% set amt_sign = '+' %}
+                    {% elif entry.entry_type in ('change', 'refund', 'discount') %}
+                        {% set amt_class = 'text-warning' %}
+                        {% set amt_sign = '−' %}
+                    {% elif entry.entry_type == 'adjustment' %}
+                        {% set amt_class = 'text-success' if entry.amount >= 0 else 'text-danger' %}
+                        {% set amt_sign = '' %}
+                    {% else %}
+                        {% set amt_class = '' %}
+                        {% set amt_sign = '' %}
+                    {% endif %}
+                    <td class="text-end fw-semibold {{ amt_class }}">
+                        {{ amt_sign }}₱{{ "%.2f"|format(entry.amount|abs) }}
+                    </td>
+                    <td class="text-end text-muted small">
+                        {% if ns.running > 0 %}
+                            <span class="text-warning">+₱{{ "%.2f"|format(ns.running) }}</span>
+                        {% elif ns.running < 0 %}
+                            <span class="text-danger">−₱{{ "%.2f"|format(ns.running|abs) }}</span>
+                        {% else %}
+                            <span class="text-success">₱0.00 ✓</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end text-nowrap">
+                        {% if not tx.is_closed %}
+                        <button class="btn btn-xs btn-light btn-edit-entry"
+                                data-entry-id="{{ entry.id }}"
+                                data-entry-type="{{ entry.entry_type }}"
+                                data-amount="{{ '%.2f'|format(entry.amount) }}"
+                                data-note="{{ entry.note or '' }}"
+                                data-edit-url="{{ url_for('transactions.ledger_edit', tx_id=tx.id, entry_id=entry.id) }}">
+                            <i class="bi bi-pencil" style="font-size:.75rem"></i>
+                        </button>
+                        <form method="POST"
+                              action="{{ url_for('transactions.ledger_delete', tx_id=tx.id, entry_id=entry.id) }}"
+                              class="d-inline"
+                              onsubmit="return confirm('Delete this entry?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-xs btn-light text-danger">
+                                <i class="bi bi-trash3" style="font-size:.75rem"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-4 small">No payment entries yet.</div>
+        {% endif %}
+    </div>
+
+    {% if not tx.is_closed %}
+    <div class="card-footer bg-transparent">
+        <button class="btn btn-sm btn-primary" data-bs-toggle="collapse" data-bs-target="#addEntryForm">
+            <i class="bi bi-plus-lg me-1"></i>Add entry
+        </button>
+        <div class="collapse mt-3" id="addEntryForm">
+            <form method="POST" action="{{ url_for('transactions.ledger_add', tx_id=tx.id) }}"
+                  class="row g-2 align-items-end">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col-sm-3">
+                    <label class="form-label form-label-sm fw-semibold">Type</label>
+                    <select name="entry_type" class="form-select form-select-sm" required>
+                        <option value="payment">Payment (+)</option>
+                        <option value="change">Change (−)</option>
+                        <option value="refund">Refund (−)</option>
+                        <option value="discount">Discount (−)</option>
+                        <option value="adjustment">Adjustment (±)</option>
+                    </select>
+                </div>
+                <div class="col-sm-3">
+                    <label class="form-label form-label-sm fw-semibold">Amount</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text">₱</span>
+                        <input type="number" name="amount" class="form-control"
+                               step="0.01" placeholder="0.00" required>
+                    </div>
+                </div>
+                <div class="col-sm-4">
+                    <label class="form-label form-label-sm fw-semibold">Note <span class="text-muted">(optional)</span></label>
+                    <input type="text" name="note" class="form-control form-control-sm"
+                           maxlength="255" placeholder="e.g. Cash payment">
+                </div>
+                <div class="col-sm-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Edit entry modal -->
+{% if not tx.is_closed %}
+<div class="modal fade" id="editEntryModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form id="editEntryForm" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">Edit Ledger Entry</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-0">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Type</label>
+                        <select name="entry_type" id="editEntryType" class="form-select" required>
+                            <option value="payment">Payment (+)</option>
+                            <option value="change">Change (−)</option>
+                            <option value="refund">Refund (−)</option>
+                            <option value="discount">Discount (−)</option>
+                            <option value="adjustment">Adjustment (±)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Amount</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">₱</span>
+                            <input type="number" name="amount" id="editEntryAmount"
+                                   class="form-control" step="0.01" placeholder="0.00" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Note <span class="text-muted">(optional)</span></label>
+                        <input type="text" name="note" id="editEntryNote" class="form-control"
+                               maxlength="255" placeholder="e.g. Cash payment">
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary fw-semibold">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if tx.transaction_type == 'sale' and not tx.is_closed %}
+<!-- Edit Transaction Items Modal -->
+<div class="modal fade" id="editTxModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <form id="editTxForm" method="POST"
+                  action="{{ url_for('transactions.edit', tx_id=tx.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="modal-header border-0">
+                    <h5 class="modal-title fw-bold">Edit Items</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body pt-0">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Items</label>
+                        <div id="editItemsList" class="mb-2" style="max-height:200px;overflow-y:auto"></div>
+                        <div class="d-flex gap-2 align-items-center mt-1">
+                            <select id="newItemProduct" class="form-select form-select-sm">
+                                <option value="">— Add product —</option>
+                                {% for p in products %}
+                                <option value="{{ p.id }}"
+                                        data-name="{{ p.name|e }}"
+                                        data-unit="{{ p.unit|e }}"
+                                        data-price="{{ p.price }}">
+                                    {{ p.name }} (₱{{ "%.2f"|format(p.price) }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <input type="number" id="newItemQty" class="form-control form-control-sm"
+                                   placeholder="Qty" min="0.5" step="0.5" style="width:70px">
+                            <button type="button" class="btn btn-sm btn-outline-primary flex-shrink-0"
+                                    onclick="addEditItem()">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                        <input type="hidden" name="items" id="editItemsJson">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Customer</label>
+                        <select name="customer_id" class="form-select" id="editCustomerSel">
+                            <option value="">Walk-in</option>
+                            {% for c in customers %}
+                            <option value="{{ c.id }}"
+                                {% if tx.customer_id == c.id %}selected{% endif %}>
+                                {{ c.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary fw-semibold">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js" integrity="sha384-cnROoUgVILyibe3J0zhzWoJ9p2WmdnK7j/BOTSWqVDbC1pVw2d+i6Q/1ESKJKCYf" crossorigin="anonymous"></script>
+<script type="application/json" id="tx-items-data">[{% for item in tx.items %}{"item_id":{{ item.id }},"product_id":{{ item.product_id|tojson }},"name":{{ item.product_name_snapshot|tojson }},"unit":{{ item.unit_snapshot|tojson }},"price":{{ item.unit_price_snapshot|float }},"quantity":{{ item.quantity|float }}}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+<style>
+.btn-xs { padding: .15rem .35rem; font-size: .75rem; }
+.edit-item-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: .5rem;
+    padding: .35rem .5rem;
+    border-bottom: 1px solid rgba(0,0,0,.06);
+    font-size: .85rem;
+}
+.edit-item-row:last-child { border-bottom: none; }
+</style>
+<script>
+// ── Ledger entry edit modal ──
+document.querySelectorAll('.btn-edit-entry').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const id   = btn.dataset.entryId;
+        const type = btn.dataset.entryType;
+        const amt  = btn.dataset.amount;
+        const note = btn.dataset.note;
+
+        document.getElementById('editEntryType').value   = type;
+        document.getElementById('editEntryAmount').value = amt;
+        document.getElementById('editEntryNote').value   = note;
+        document.getElementById('editEntryForm').action  = btn.dataset.editUrl;
+
+        new bootstrap.Modal(document.getElementById('editEntryModal')).show();
+    });
+});
+
+// ── Item-edit modal helpers ──
+const TX_ITEMS_INITIAL = JSON.parse(document.getElementById('tx-items-data').textContent);
+let editItems = [];
+
+// Searchable selects via Tom Select
+let newItemTS = null;
+let customerTS = null;
+document.addEventListener('DOMContentLoaded', () => {
+    const elProduct = document.getElementById('newItemProduct');
+    if (elProduct) newItemTS = new TomSelect(elProduct, {
+        allowEmptyOption: true,
+        placeholder: '— Add product —',
+        maxOptions: null,
+    });
+    const elCustomer = document.getElementById('editCustomerSel');
+    if (elCustomer) customerTS = new TomSelect(elCustomer, {
+        allowEmptyOption: true,
+        maxOptions: null,
+    });
+});
+
+document.getElementById('editTxModal')?.addEventListener('show.bs.modal', () => {
+    editItems = TX_ITEMS_INITIAL.map(i => ({ ...i }));
+    renderEditItems();
+    if (newItemTS) newItemTS.clear(); else document.getElementById('newItemProduct').value = '';
+    document.getElementById('newItemQty').value = '';
+    // Sync customer select to the current transaction value
+    const txCustomerId = {{ tx.customer_id | tojson }};
+    if (customerTS) customerTS.setValue(txCustomerId, true);
+});
+
+function escapeHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function renderEditItems() {
+    const list = document.getElementById('editItemsList');
+    if (!editItems.length) {
+        list.innerHTML = '<div class="text-muted small py-1">No items — add at least one.</div>';
+        document.getElementById('editItemsJson').value = '[]';
+        return;
+    }
+    list.innerHTML = editItems.map((item, idx) => `
+        <div class="edit-item-row">
+            <div>
+                <span class="fw-semibold">${escapeHtml(item.name)}</span>
+                <span class="text-muted ms-1" style="font-size:.75rem">₱${item.price.toFixed(2)}/${escapeHtml(item.unit)}</span>
+            </div>
+            <input type="number" class="form-control form-control-sm text-center"
+                   style="width:65px" value="${item.quantity}" min="0.5" step="0.5"
+                   onchange="setEditItemQty(${idx}, this.value)">
+            <button type="button" class="btn btn-sm btn-light text-danger p-1"
+                    onclick="removeEditItem(${idx})">
+                <i class="bi bi-trash3" style="font-size:.8rem"></i>
+            </button>
+        </div>`).join('');
+    syncEditItemsJson();
+}
+
+function setEditItemQty(idx, val) {
+    editItems[idx].quantity = parseFloat(val) || 0;
+    syncEditItemsJson();
+}
+function removeEditItem(idx) {
+    editItems.splice(idx, 1);
+    renderEditItems();
+}
+function addEditItem() {
+    const sel = document.getElementById('newItemProduct');
+    const qtyEl = document.getElementById('newItemQty');
+    if (!sel.value) return;
+    const opt = Array.from(sel.options).find(o => o.value === sel.value);
+    if (!opt) return;
+    const qty = parseFloat(qtyEl.value) || 1;
+    editItems.push({
+        item_id: null,
+        product_id: parseInt(sel.value),
+        name: opt.dataset.name,
+        unit: opt.dataset.unit,
+        price: parseFloat(opt.dataset.price),
+        quantity: qty,
+    });
+    if (newItemTS) newItemTS.clear(); else sel.value = '';
+    qtyEl.value = '';
+    renderEditItems();
+}
+function syncEditItemsJson() {
+    document.getElementById('editItemsJson').value = JSON.stringify(
+        editItems.map(i => ({
+            item_id:    i.item_id,
+            product_id: i.product_id,
+            name:       i.name,
+            unit:       i.unit,
+            price:      i.price,
+            quantity:   i.quantity,
+        }))
+    );
+}
+
+document.getElementById('editTxForm')?.addEventListener('submit', function(e) {
+    syncEditItemsJson();
+    if (!editItems.length) {
+        e.preventDefault();
+        alert('Add at least one item.');
+    }
+});
+</script>
+{% endblock %}

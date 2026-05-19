@@ -88,7 +88,7 @@
         <div class="card">
             <div class="card-header bg-white border-bottom py-2">
                 <strong class="small text-muted text-uppercase">
-                    <i class="bi bi-box me-1"></i>Products
+                    <i class="bi bi-box-seam me-1"></i>Products
                 </strong>
             </div>
             <div class="card-body">
@@ -101,19 +101,22 @@
                                 data-name="{{ p.name|e }}"
                                 data-unit="{{ p.unit|e }}"
                                 data-price="{{ p.price }}"
-                                data-stock="{{ p.stock }}"
                                 onclick="openQtyModal(this)">
                             <div class="p-name">{{ p.name }}</div>
-                            <div class="p-price">₱{{ "%.2f"|format(p.price) }}</div>
-                            <div class="p-stock">Stock: {{ p.stock }}</div>
+                            <div class="p-price">{{ p.unit }} · ₱{{ p.price }}</div>
+                            <div class="p-stock">
+                                {% for ing in p.ingredients %}
+                                {{ ing.quantity }} {{ ing.stock_item.unit }} {{ ing.stock_item.name }}{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </div>
                         </button>
                     </div>
                     {% endfor %}
                 </div>
                 {% else %}
                 <div class="text-center text-muted py-4">
-                    <i class="bi bi-box fs-2 d-block mb-2"></i>
-                    No active products.
+                    <i class="bi bi-box-seam fs-2 d-block mb-2"></i>
+                    No products with ingredient mappings.
                     <a href="{{ url_for('products.index') }}">Add one</a>
                 </div>
                 {% endif %}
@@ -234,11 +237,12 @@ function openQtyModal(btn) {
         id: btn.dataset.id,
         name: btn.dataset.name,
         unit: btn.dataset.unit,
+        price: parseFloat(btn.dataset.price) || 0,
     };
     document.getElementById('qtyTitle').textContent = modalProduct.name;
-    document.getElementById('qtySub').textContent = modalProduct.unit;
     document.getElementById('qtyInput').value = 1;
-    document.getElementById('priceInput').value = 0;
+    document.getElementById('priceInput').value = modalProduct.price.toFixed(2);
+    refreshQtySubtotal();
     qtyModal.show();
     setTimeout(() => document.getElementById('qtyInput').select(), 300);
 }
@@ -246,6 +250,7 @@ function openQtyModal(btn) {
 document.getElementById('qtyInput').addEventListener('input', refreshQtySubtotal);
 document.getElementById('priceInput').addEventListener('input', refreshQtySubtotal);
 function refreshQtySubtotal() {
+    const qty   = parseFloat(document.getElementById('qtyInput').value) || 0;
     const total = parseFloat(document.getElementById('priceInput').value) || 0;
     document.getElementById('qtySub').textContent =
         `${modalProduct ? modalProduct.unit : ''} · Total: ₱${total.toFixed(2)}`;
@@ -256,16 +261,33 @@ function confirmAdd() {
     const totalPrice = parseFloat(document.getElementById('priceInput').value) || 0;
     if (!qty || qty <= 0) return;
     const unitPrice = qty > 0 ? totalPrice / qty : 0;
-    const existing = cart.find(i => i.id === modalProduct.id);
+    const existing = cart.find(i => i.product_id === modalProduct.id);
     if (existing) {
         existing.quantity = qty;
-        existing.unit_price = unitPrice;
+        existing.unit_price = parseFloat(unitPrice.toFixed(4));
         existing.subtotal = totalPrice;
     } else {
-        cart.push({ ...modalProduct, quantity: qty, unit_price: unitPrice, subtotal: totalPrice });
+        cart.push({
+            product_id: modalProduct.id,
+            name: modalProduct.name,
+            unit: modalProduct.unit,
+            quantity: qty,
+            unit_price: parseFloat(unitPrice.toFixed(4)),
+            subtotal: totalPrice,
+        });
     }
     qtyModal.hide();
     renderCart();
+}
+
+/* ── HTML escaping helper (prevent XSS via dataset injection into innerHTML) ── */
+function esc(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 /* ── Cart rendering ── */
@@ -278,12 +300,12 @@ function renderCart() {
         body.innerHTML = cart.map((item, idx) => `
             <div class="cart-item">
                 <div>
-                    <div class="fw-semibold small">${item.name}</div>
-                    <div class="text-muted" style="font-size:.72rem">${item.quantity} ${item.unit}</div>
+                    <div class="fw-semibold small">${esc(item.name)}</div>
+                    <div class="text-muted" style="font-size:.72rem">${esc(String(item.quantity))} ${esc(item.unit)}</div>
                 </div>
                 <div class="qty-ctrl">
                     <button class="qty-btn" onclick="changeQty(${idx}, -0.5)">−</button>
-                    <input class="qty-input" type="number" value="${item.quantity}"
+                    <input class="qty-input" type="number" value="${esc(String(item.quantity))}"
                            min="0.5" step="0.5" onchange="setQty(${idx}, this.value)">
                     <button class="qty-btn" onclick="changeQty(${idx}, 0.5)">+</button>
                 </div>
@@ -350,7 +372,7 @@ document.getElementById('restockForm').addEventListener('submit', () => {
         document.getElementById('vendorSelect').value;
     document.getElementById('hStatus').value = selectedPayment;
     document.getElementById('hItems').value = JSON.stringify(
-        cart.map(i => ({ product_id: i.id, quantity: i.quantity, unit_price: i.unit_price }))
+        cart.map(i => ({ product_id: i.product_id, quantity: i.quantity, unit_price: i.unit_price }))
     );
     let paid = 0;
     if (selectedPayment === 'full')

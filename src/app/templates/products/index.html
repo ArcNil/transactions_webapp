@@ -1,6 +1,48 @@
 {% extends 'base.html' %}
 {% block title %}Products{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/css/tom-select.bootstrap5.min.css">
+<style>
+  /* Dropdown above Bootstrap modal overlay */
+  .ts-dropdown { z-index: 1060 !important; }
+
+  /* Dark-mode overrides for Tom Select */
+  [data-bs-theme="dark"] .ts-wrapper .ts-control {
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+  }
+  /* Focus ring: override specificity that would suppress library's focus border */
+  [data-bs-theme="dark"] .ts-wrapper.focus .ts-control {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 .25rem rgba(13, 110, 253, .25);
+  }
+  [data-bs-theme="dark"] .ts-wrapper .ts-control input {
+    color: var(--bs-body-color);
+  }
+  [data-bs-theme="dark"] .ts-wrapper .ts-control input::placeholder {
+    color: #64748b;
+  }
+  [data-bs-theme="dark"] .ts-dropdown {
+    background-color: var(--bs-body-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+  }
+  [data-bs-theme="dark"] .ts-dropdown .option {
+    color: var(--bs-body-color);
+  }
+  [data-bs-theme="dark"] .ts-dropdown .option:hover,
+  [data-bs-theme="dark"] .ts-dropdown .option.active {
+    background-color: var(--bs-primary);
+    color: var(--bs-primary-text-emphasis, #fff);
+  }
+  [data-bs-theme="dark"] .ts-dropdown .option.selected {
+    background-color: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header d-flex align-items-center justify-content-between">
     <h1><i class="bi bi-droplet me-2 text-primary"></i>Products</h1>
@@ -71,15 +113,28 @@
                         <td class="text-end">
                             <button class="btn btn-sm btn-light me-1"
                                     title="Manage ingredients"
-                                    onclick="openIngredientsModal({{ p.id }}, '{{ p.name|e }}', {{ ingredients_by_product[p.id] | tojson }})">
+                                    data-product-id="{{ p.id }}"
+                                    data-product-name="{{ p.name|e }}"
+                                    data-ingredients="{{ ingredients_by_product[p.id] | tojson | forceescape }}"
+                                    onclick="openIngredientsModal(this)">
                                 <i class="bi bi-ui-checks"></i>
                             </button>
                             <button class="btn btn-sm btn-light me-1"
-                                    onclick="openEditModal({{ p.id }}, '{{ p.name|e }}', '{{ p.unit|e }}', {{ p.price }}, {{ 'true' if p.is_active else 'false' }}, {{ p.vendor_id if p.vendor_id else 0 }}, {{ 'true' if p.show_in_pos else 'false' }})">
+                                    data-product-id="{{ p.id }}"
+                                    data-name="{{ p.name|e }}"
+                                    data-unit="{{ p.unit|e }}"
+                                    data-price="{{ p.price }}"
+                                    data-is-active="{{ 'true' if p.is_active else 'false' }}"
+                                    data-show-in-pos="{{ 'true' if p.show_in_pos else 'false' }}"
+                                    data-vendor-id="{{ p.vendor_id or '' }}"
+                                    data-ingredients="{{ ingredients_by_product[p.id] | tojson | forceescape }}"
+                                    onclick="openEditModal(this)">
                                 <i class="bi bi-pencil"></i>
                             </button>
                             <button class="btn btn-sm btn-light text-danger"
-                                    onclick="openDeleteModal({{ p.id }}, '{{ p.name|e }}')">
+                                    data-product-id="{{ p.id }}"
+                                    data-product-name="{{ p.name|e }}"
+                                    onclick="openDeleteModal(this)">
                                 <i class="bi bi-trash3"></i>
                             </button>
                         </td>
@@ -99,7 +154,7 @@
 
 <!-- Add / Edit modal -->
 <div class="modal fade" id="productModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow">
             <form id="productForm" method="POST">
                 {{ form.hidden_tag() }}
@@ -124,8 +179,13 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        {{ form.vendor_id.label(class="form-label fw-semibold small") }}
-                        {{ form.vendor_id(class="form-select") }}
+                        <label class="form-label fw-semibold small">Vendor (optional)</label>
+                        <select name="vendor_id" id="productVendorSelect" class="form-select">
+                            <option value="">— No vendor —</option>
+                            {% for v in vendors %}
+                            <option value="{{ v.id }}">{{ v.name }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                     <div class="form-check">
                         {{ form.is_active(class="form-check-input") }}
@@ -141,6 +201,39 @@
                     <button type="submit" class="btn btn-primary fw-semibold">Save Product</button>
                 </div>
             </form>
+
+            <!-- Raw stock / ingredients section — only visible when editing an existing product -->
+            <div id="editIngredientsSection" class="px-4 pb-4 d-none">
+                <hr class="mt-0 mb-3">
+                <div class="small fw-semibold text-muted text-uppercase mb-2">Raw Stock Used Per Unit</div>
+
+                <div id="editIngList" class="mb-3"></div>
+
+                <form id="editIngAddForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-6">
+                            <label class="form-label small mb-1">Stock Item</label>
+                            <select name="stock_item_id" class="form-select form-select-sm" required>
+                                <option value="">— Select —</option>
+                                {% for si in stock_items %}
+                                <option value="{{ si.id }}">{{ si.name }} ({{ si.unit }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-1">Qty per unit sold</label>
+                            <input type="number" name="quantity" class="form-control form-control-sm"
+                                   step="0.0001" min="0.0001" placeholder="e.g. 20" required>
+                        </div>
+                        <div class="col-2">
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
 </div>
@@ -216,10 +309,66 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/tom-select@2.4.3/dist/js/tom-select.complete.min.js"></script>
 <script>
 const addUrl      = "{{ url_for('products.add') }}";
 const editBaseUrl = "/products/";
 const csrfToken   = "{{ csrf_token() }}";
+
+const vendorSelect = new TomSelect('#productVendorSelect', {
+    allowEmptyOption: true,
+    placeholder: '— No vendor —',
+    maxOptions: null,
+    plugins: ['clear_button'],
+});
+
+/**
+ * Build ingredient list rows using DOM methods (no innerHTML with user data → no XSS).
+ */
+function buildIngredientList(container, productId, ingredients) {
+    container.textContent = '';
+    if (!ingredients || ingredients.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'text-muted small fst-italic mb-2';
+        p.textContent = 'No raw stock linked yet.';
+        container.appendChild(p);
+        return;
+    }
+    ingredients.forEach(ing => {
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-center justify-content-between py-1 border-bottom';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'small';
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-archive me-1 text-muted';
+        nameSpan.appendChild(icon);
+        nameSpan.appendChild(document.createTextNode(
+            ing.stock_item_name + ' \u00d7 ' + ing.quantity + ' ' + ing.stock_item_unit
+        ));
+
+        const deleteForm = document.createElement('form');
+        deleteForm.method = 'POST';
+        deleteForm.action = '/products/' + productId + '/ingredients/' + ing.id + '/delete';
+        deleteForm.className = 'd-inline';
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = csrfToken;
+        const delBtn = document.createElement('button');
+        delBtn.type = 'submit';
+        delBtn.className = 'btn btn-sm p-0 text-danger ms-2';
+        const trashIcon = document.createElement('i');
+        trashIcon.className = 'bi bi-trash3';
+        delBtn.appendChild(trashIcon);
+        deleteForm.appendChild(csrfInput);
+        deleteForm.appendChild(delBtn);
+
+        row.appendChild(nameSpan);
+        row.appendChild(deleteForm);
+        container.appendChild(row);
+    });
+}
 
 function openAddModal() {
     document.getElementById('productModalTitle').textContent = 'Add Product';
@@ -227,9 +376,19 @@ function openAddModal() {
     document.getElementById('productForm').reset();
     document.getElementById('productForm').querySelector('[name=is_active]').checked = true;
     document.getElementById('productForm').querySelector('[name=show_in_pos]').checked = true;
+    vendorSelect.setValue('');
+    document.getElementById('editIngredientsSection').classList.add('d-none');
 }
 
-function openEditModal(id, name, unit, price, isActive, vendorId, showInPos) {
+function openEditModal(btn) {
+    const id        = btn.dataset.productId;
+    const name      = btn.dataset.name;
+    const unit      = btn.dataset.unit;
+    const price     = btn.dataset.price;
+    const isActive  = btn.dataset.isActive === 'true';
+    const showInPos = btn.dataset.showInPos === 'true';
+    const ingredients = JSON.parse(btn.dataset.ingredients || '[]');
+
     document.getElementById('productModalTitle').textContent = 'Edit Product';
     document.getElementById('productForm').action = editBaseUrl + id + '/edit';
     const f = document.getElementById('productForm');
@@ -238,42 +397,33 @@ function openEditModal(id, name, unit, price, isActive, vendorId, showInPos) {
     f.querySelector('[name=price]').value = price;
     f.querySelector('[name=is_active]').checked = isActive;
     f.querySelector('[name=show_in_pos]').checked = showInPos;
-    f.querySelector('[name=vendor_id]').value = vendorId;
-    new bootstrap.Modal(document.getElementById('productModal')).show();
+    vendorSelect.setValue(btn.dataset.vendorId || '');
+
+    // Populate raw stock section
+    document.getElementById('editIngAddForm').action = editBaseUrl + id + '/ingredients/add';
+    buildIngredientList(document.getElementById('editIngList'), id, ingredients);
+    document.getElementById('editIngredientsSection').classList.remove('d-none');
+
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('productModal')).show();
 }
 
-function openDeleteModal(id, name) {
+function openDeleteModal(btn) {
+    const id   = btn.dataset.productId;
+    const name = btn.dataset.productName;
     document.getElementById('deleteProductName').textContent = name;
     document.getElementById('deleteForm').action = '/products/' + id + '/delete';
-    new bootstrap.Modal(document.getElementById('deleteModal')).show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteModal')).show();
 }
 
-function openIngredientsModal(productId, productName, ingredients) {
+function openIngredientsModal(btn) {
+    const productId   = btn.dataset.productId;
+    const productName = btn.dataset.productName;
+    const ingredients = JSON.parse(btn.dataset.ingredients || '[]');
+
     document.getElementById('ingProductName').textContent = productName;
     document.getElementById('ingAddForm').action = '/products/' + productId + '/ingredients/add';
-
-    const list = document.getElementById('ingList');
-    if (ingredients.length === 0) {
-        list.innerHTML = '<p class="text-muted small fst-italic">No ingredients yet.</p>';
-    } else {
-        list.innerHTML = '<div class="small fw-semibold text-muted text-uppercase mb-2">Current Ingredients</div>' +
-            ingredients.map(ing => `
-                <div class="d-flex align-items-center justify-content-between py-1 border-bottom">
-                    <span class="small">
-                        <i class="bi bi-archive me-1 text-muted"></i>
-                        ${ing.stock_item_name} &times; ${ing.quantity} ${ing.stock_item_unit}
-                    </span>
-                    <form method="POST"
-                          action="/products/${productId}/ingredients/${ing.id}/delete"
-                          class="d-inline">
-                        <input type="hidden" name="csrf_token" value="${csrfToken}">
-                        <button type="submit" class="btn btn-sm p-0 text-danger ms-2">
-                            <i class="bi bi-trash3"></i>
-                        </button>
-                    </form>
-                </div>`).join('');
-    }
-    new bootstrap.Modal(document.getElementById('ingredientsModal')).show();
+    buildIngredientList(document.getElementById('ingList'), productId, ingredients);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('ingredientsModal')).show();
 }
 </script>
 {% endblock %}
