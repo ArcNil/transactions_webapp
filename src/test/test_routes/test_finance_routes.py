@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime
 
-from app.models.transaction import Transaction, TransactionItem
+from app.models.transaction import Transaction, TransactionItem, TransactionLedgerEntry
 
 
 def test_anonymous_get_finance_redirects_to_login(client):
@@ -31,8 +31,6 @@ def test_finance_shows_sale_product_name_snapshot(logged_in_superadmin_client, d
     tx = Transaction(
         transaction_type="sale",
         total_amount="50.00",
-        amount_paid="50.00",
-        payment_status="full",
     )
     db_session.add(tx)
     db_session.flush()
@@ -55,8 +53,6 @@ def test_finance_shows_restock_transaction_as_expense(logged_in_superadmin_clien
     tx = Transaction(
         transaction_type="restock",
         total_amount="80.00",
-        amount_paid="80.00",
-        payment_status="full",
     )
     db_session.add(tx)
     db_session.flush()
@@ -79,8 +75,6 @@ def test_finance_shows_stock_restock_transaction_as_expense(logged_in_superadmin
     tx = Transaction(
         transaction_type="stock_restock",
         total_amount="120.00",
-        amount_paid="120.00",
-        payment_status="full",
     )
     db_session.add(tx)
     db_session.flush()
@@ -103,14 +97,10 @@ def test_finance_net_equals_revenue_minus_expenses(logged_in_superadmin_client, 
     sale = Transaction(
         transaction_type="sale",
         total_amount="200.00",
-        amount_paid="200.00",
-        payment_status="full",
     )
     expense = Transaction(
         transaction_type="restock",
         total_amount="75.00",
-        amount_paid="75.00",
-        payment_status="full",
     )
     db_session.add_all([sale, expense])
     db_session.flush()
@@ -130,6 +120,8 @@ def test_finance_net_equals_revenue_minus_expenses(logged_in_superadmin_client, 
         quantity="1",
         subtotal="75.00",
     ))
+    db_session.add(TransactionLedgerEntry(transaction_id=sale.id, entry_type="payment", amount="200.00"))
+    db_session.add(TransactionLedgerEntry(transaction_id=expense.id, entry_type="payment", amount="75.00"))
     db_session.commit()
 
     response = logged_in_superadmin_client.get("/finance/")
@@ -142,15 +134,11 @@ def test_finance_sales_listed_newest_first(logged_in_superadmin_client, db_sessi
     older_sale = Transaction(
         transaction_type="sale",
         total_amount="10.00",
-        amount_paid="10.00",
-        payment_status="full",
         created_at=datetime(2026, 1, 1, 8, 0, 0),
     )
     newer_sale = Transaction(
         transaction_type="sale",
         total_amount="20.00",
-        amount_paid="20.00",
-        payment_status="full",
         created_at=datetime(2026, 1, 2, 8, 0, 0),
     )
     db_session.add_all([older_sale, newer_sale])
@@ -184,15 +172,11 @@ def test_finance_expenses_listed_newest_first(logged_in_superadmin_client, db_se
     older_expense = Transaction(
         transaction_type="restock",
         total_amount="30.00",
-        amount_paid="30.00",
-        payment_status="full",
         created_at=datetime(2026, 1, 1, 9, 0, 0),
     )
     newer_expense = Transaction(
         transaction_type="restock",
         total_amount="40.00",
-        amount_paid="40.00",
-        payment_status="full",
         created_at=datetime(2026, 1, 2, 9, 0, 0),
     )
     db_session.add_all([older_expense, newer_expense])
@@ -228,8 +212,6 @@ def test_finance_partial_payment_sale_amount_paid_included_in_revenue(
     tx = Transaction(
         transaction_type="sale",
         total_amount="100.00",
-        amount_paid="60.00",
-        payment_status="partial",
     )
     db_session.add(tx)
     db_session.flush()
@@ -241,11 +223,12 @@ def test_finance_partial_payment_sale_amount_paid_included_in_revenue(
         quantity="2",
         subtotal="100.00",
     ))
+    db_session.add(TransactionLedgerEntry(transaction_id=tx.id, entry_type="payment", amount="60.00"))
     db_session.commit()
 
     response = logged_in_superadmin_client.get("/finance/")
     assert response.status_code == 200
-    # Revenue is sum of amount_paid for sales → 60.00
+    # Revenue is sum of payment ledger entries for sales → 60.00
     assert b"60.00" in response.data
 
 
@@ -253,8 +236,6 @@ def test_finance_unpaid_sale_contributes_zero_to_revenue(logged_in_superadmin_cl
     tx = Transaction(
         transaction_type="sale",
         total_amount="100.00",
-        amount_paid="0.00",
-        payment_status="unpaid",
     )
     db_session.add(tx)
     db_session.flush()
@@ -282,8 +263,6 @@ def test_finance_transaction_with_no_items_does_not_crash(logged_in_superadmin_c
     tx = Transaction(
         transaction_type="sale",
         total_amount="0.00",
-        amount_paid="0.00",
-        payment_status="unpaid",
     )
     db_session.add(tx)
     db_session.commit()
@@ -297,4 +276,4 @@ def test_finance_unknown_transaction_type_is_rejected_by_model():
     # level via @validates. Attempting to create a Transaction with an unknown
     # type must raise ValueError immediately — before any DB write occurs.
     with pytest.raises(ValueError, match="Invalid transaction_type"):
-        Transaction(transaction_type="refund", total_amount="50.00", amount_paid="50.00", payment_status="full")
+        Transaction(transaction_type="refund", total_amount="50.00")

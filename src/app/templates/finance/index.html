@@ -97,12 +97,13 @@
                                 <th>Customer</th>
                                 <th>Items</th>
                                 <th class="text-end">Total</th>
-                                <th class="text-end">Paid</th>
+                                <th class="text-end">Balance</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for tx in sales %}
+                            {% set bal = tx.balance %}
                             <tr style="cursor:pointer"
                                 data-bs-toggle="collapse"
                                 data-bs-target="#sale-detail-{{ tx.id }}">
@@ -114,10 +115,14 @@
                                     {% endfor %}
                                 </td>
                                 <td class="text-end fw-semibold">₱{{ "%.2f"|format(tx.total_amount) }}</td>
-                                <td class="text-end">₱{{ "%.2f"|format(tx.amount_paid) }}</td>
+                                <td class="text-end">
+                                    {% if bal > 0 %}<span class="text-warning fw-semibold">+₱{{ "%.2f"|format(bal) }}</span>
+                                    {% elif bal < 0 %}<span class="text-danger fw-semibold">−₱{{ "%.2f"|format(bal|abs) }}</span>
+                                    {% else %}<span class="text-success">₱0.00</span>{% endif %}
+                                </td>
                                 <td>
-                                    <span class="badge badge-{{ tx.payment_status }}">
-                                        {{ tx.payment_status|capitalize }}
+                                    <span class="badge {% if tx.is_closed %}bg-secondary{% elif bal > 0 %}bg-warning text-dark{% elif bal < 0 %}bg-danger{% else %}bg-success{% endif %}">
+                                        {{ tx.effective_status }}
                                     </span>
                                 </td>
                             </tr>
@@ -172,12 +177,13 @@
                                 <th>Vendor</th>
                                 <th>Items</th>
                                 <th class="text-end">Total</th>
-                                <th class="text-end">Paid</th>
+                                <th class="text-end">Balance</th>
                                 <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for tx in expenses %}
+                            {% set bal = tx.balance %}
                             <tr style="cursor:pointer"
                                 data-bs-toggle="collapse"
                                 data-bs-target="#exp-detail-{{ tx.id }}">
@@ -196,10 +202,14 @@
                                     {% endfor %}
                                 </td>
                                 <td class="text-end fw-semibold">₱{{ "%.2f"|format(tx.total_amount) }}</td>
-                                <td class="text-end">₱{{ "%.2f"|format(tx.amount_paid) }}</td>
+                                <td class="text-end">
+                                    {% if bal > 0 %}<span class="text-warning fw-semibold">+₱{{ "%.2f"|format(bal) }}</span>
+                                    {% elif bal < 0 %}<span class="text-danger fw-semibold">−₱{{ "%.2f"|format(bal|abs) }}</span>
+                                    {% else %}<span class="text-success">₱0.00</span>{% endif %}
+                                </td>
                                 <td>
-                                    <span class="badge badge-{{ tx.payment_status }}">
-                                        {{ tx.payment_status|capitalize }}
+                                    <span class="badge {% if tx.is_closed %}bg-secondary{% elif bal > 0 %}bg-warning text-dark{% elif bal < 0 %}bg-danger{% else %}bg-success{% endif %}">
+                                        {{ tx.effective_status }}
                                     </span>
                                 </td>
                             </tr>

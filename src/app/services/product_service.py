@@ -1,13 +1,36 @@
 from decimal import Decimal, InvalidOperation
 
+from sqlalchemy.orm import joinedload
+
 from app import db
 from app.models.product import Product
 from app.models.stock import StockItem, ProductIngredient
+from app.models.vendor import Vendor
 from app.utils.monitor import record_action
 
 
 class ProductError(ValueError):
     """Raised when a product operation cannot be completed."""
+
+
+def get_all_products_with_ingredients() -> list[Product]:
+    """Return all products, eagerly loading ingredients and their stock items."""
+    return (
+        Product.query
+        .options(joinedload(Product.ingredients).joinedload(ProductIngredient.stock_item))
+        .order_by(Product.name)
+        .all()
+    )
+
+
+def get_all_stock_items() -> list[StockItem]:
+    """Return all stock items ordered by name."""
+    return StockItem.query.order_by(StockItem.name).all()
+
+
+def get_all_vendors() -> list[Vendor]:
+    """Return all vendors ordered by name."""
+    return Vendor.query.order_by(Vendor.name).all()
 
 
 def upsert_ingredient(
@@ -74,7 +97,7 @@ def upsert_ingredient(
     )
 
 
-def add_product(form, user_id: int, username: str) -> Product:
+def add_product(form, user_id: int, username: str, vendor_id: int | None = None) -> Product:
     """Create and persist a new product from a validated ProductForm."""
     product = Product(
         name=form.name.data,
@@ -82,7 +105,7 @@ def add_product(form, user_id: int, username: str) -> Product:
         price=form.price.data,
         is_active=form.is_active.data,
         show_in_pos=form.show_in_pos.data,
-        vendor_id=form.vendor_id.data if form.vendor_id.data != 0 else None,
+        vendor_id=vendor_id,
     )
     db.session.add(product)
     try:
@@ -94,14 +117,14 @@ def add_product(form, user_id: int, username: str) -> Product:
     return product
 
 
-def edit_product(product: Product, form, user_id: int, username: str) -> Product:
+def edit_product(product: Product, form, user_id: int, username: str, vendor_id: int | None = None) -> Product:
     """Update an existing product from a validated ProductForm."""
     product.name = form.name.data
     product.unit = form.unit.data
     product.price = form.price.data
     product.is_active = form.is_active.data
     product.show_in_pos = form.show_in_pos.data
-    product.vendor_id = form.vendor_id.data if form.vendor_id.data != 0 else None
+    product.vendor_id = vendor_id
     try:
         db.session.commit()
     except Exception:

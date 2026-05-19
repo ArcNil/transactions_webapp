@@ -1,5 +1,6 @@
 import json
 
+from app.models.transaction import TransactionLedgerEntry
 
 def test_root_redirects_to_login_when_not_authenticated(client):
     response = client.get("/")
@@ -41,6 +42,10 @@ def test_chart_data_returns_7_entries(logged_in_client):
 def test_chart_data_returns_correct_revenue_for_today(
     logged_in_client, sample_transaction, db_session
 ):
+    db_session.add(TransactionLedgerEntry(
+        transaction_id=sample_transaction.id, entry_type="payment", amount="100.00"
+    ))
+    db_session.commit()
     response = logged_in_client.get("/api/dashboard/chart")
     assert response.status_code == 200
     payload = json.loads(response.data)

@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from app.models.product import Product
 from app.models.stock import StockItem, ProductIngredient
+from app.models.vendor import Vendor
 
 
 def test_products_index_returns_200_when_authenticated(logged_in_client):
@@ -261,3 +262,148 @@ def test_products_ingredient_add_nonexistent_product_returns_404(logged_in_clien
         data={"stock_item_id": "1", "quantity": "1.0"},
     )
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# vendor_id extraction — POST /products/add
+# ---------------------------------------------------------------------------
+
+
+def test_add_product_with_valid_vendor_id_stores_vendor(
+    logged_in_client, sample_vendor, db_session
+):
+    response = logged_in_client.post(
+        "/products/add",
+        data={
+            "name": "Vendor Gallon",
+            "unit": "gallon",
+            "price": "30.00",
+            "is_active": "y",
+            "vendor_id": str(sample_vendor.id),
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"added" in response.data
+
+    product = Product.query.filter_by(name="Vendor Gallon").first()
+    assert product is not None
+    assert product.vendor_id == sample_vendor.id
+
+
+def test_add_product_with_vendor_id_zero_stores_none(logged_in_client, db_session):
+    response = logged_in_client.post(
+        "/products/add",
+        data={
+            "name": "Zero Vendor Gallon",
+            "unit": "gallon",
+            "price": "30.00",
+            "is_active": "y",
+            "vendor_id": "0",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"added" in response.data
+
+    product = Product.query.filter_by(name="Zero Vendor Gallon").first()
+    assert product is not None
+    assert product.vendor_id is None
+
+
+def test_add_product_with_non_numeric_vendor_id_stores_none(logged_in_client, db_session):
+    response = logged_in_client.post(
+        "/products/add",
+        data={
+            "name": "NoVendor Gallon",
+            "unit": "gallon",
+            "price": "30.00",
+            "is_active": "y",
+            "vendor_id": "abc",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"added" in response.data
+
+    product = Product.query.filter_by(name="NoVendor Gallon").first()
+    assert product is not None
+    assert product.vendor_id is None
+
+
+def test_add_product_with_nonexistent_vendor_id_stores_vendor_id_anyway(
+    logged_in_client, db_session
+):
+    # SQLite does NOT enforce FK constraints by default, so committing a
+    # Product with vendor_id=99999 (no matching Vendor row) succeeds without
+    # raising an IntegrityError.  The route passes the raw integer straight to
+    # add_product() without validating FK existence first.
+    response = logged_in_client.post(
+        "/products/add",
+        data={
+            "name": "Ghost Vendor Gallon",
+            "unit": "gallon",
+            "price": "30.00",
+            "is_active": "y",
+            "vendor_id": "99999",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"added" in response.data
+
+    product = Product.query.filter_by(name="Ghost Vendor Gallon").first()
+    assert product is not None
+    assert product.vendor_id == 99999
+
+
+# ---------------------------------------------------------------------------
+# vendor_id extraction — POST /products/<id>/edit
+# ---------------------------------------------------------------------------
+
+
+def test_edit_product_with_valid_vendor_id_updates_vendor(
+    logged_in_client, sample_product, sample_vendor, db_session
+):
+    product_id = sample_product.id
+    response = logged_in_client.post(
+        f"/products/{product_id}/edit",
+        data={
+            "name": sample_product.name,
+            "unit": sample_product.unit,
+            "price": str(sample_product.price),
+            "is_active": "y",
+            "vendor_id": str(sample_vendor.id),
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"updated" in response.data
+
+    db_session.refresh(sample_product)
+    assert sample_product.vendor_id == sample_vendor.id
+
+
+def test_edit_product_clears_vendor_when_vendor_id_is_zero(
+    logged_in_client, sample_product, sample_vendor, db_session
+):
+    sample_product.vendor_id = sample_vendor.id
+    db_session.commit()
+
+    product_id = sample_product.id
+    response = logged_in_client.post(
+        f"/products/{product_id}/edit",
+        data={
+            "name": sample_product.name,
+            "unit": sample_product.unit,
+            "price": str(sample_product.price),
+            "is_active": "y",
+            "vendor_id": "0",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"updated" in response.data
+
+    db_session.refresh(sample_product)
+    assert sample_product.vendor_id is None

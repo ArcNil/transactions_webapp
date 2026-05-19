@@ -14,28 +14,6 @@ def test_transactions_index_redirects_to_login_if_anonymous(client):
     assert "/login" in response.headers["Location"]
 
 
-def test_transactions_edit_updates_payment_status(
-    logged_in_client, sample_transaction, db_session
-):
-    tx_id = sample_transaction.id
-    item_id = sample_transaction.items[0].id
-
-    response = logged_in_client.post(
-        f"/transactions/{tx_id}/edit",
-        data={
-            "payment_status": "partial",
-            "amount_paid": "50.00",
-            "items": json.dumps([{"item_id": item_id, "quantity": "2"}]),
-        },
-        follow_redirects=True,
-    )
-    assert response.status_code == 200
-    assert b"updated" in response.data
-
-    tx = db_session.get(Transaction, tx_id)
-    assert tx.payment_status == "partial"
-
-
 def test_transactions_edit_with_empty_items_list_flashes_warning(
     logged_in_client, sample_transaction
 ):
@@ -63,23 +41,6 @@ def test_transactions_edit_nonexistent_transaction_returns_404(logged_in_client)
         },
     )
     assert response.status_code == 404
-
-
-def test_transactions_edit_with_invalid_payment_status_flashes_error(
-    logged_in_client, sample_transaction
-):
-    tx_id = sample_transaction.id
-    response = logged_in_client.post(
-        f"/transactions/{tx_id}/edit",
-        data={
-            "payment_status": "invalid",
-            "amount_paid": "0",
-            "items": json.dumps([{"product_id": 1, "quantity": "1"}]),
-        },
-        follow_redirects=True,
-    )
-    assert response.status_code == 200
-    assert b"Invalid payment status." in response.data
 
 
 def test_transactions_edit_with_malformed_json_items_flashes_error(
@@ -121,25 +82,6 @@ def test_transactions_edit_recalculates_total_amount_after_quantity_change(
     )
     db_session.refresh(sample_transaction)
     assert sample_transaction.total_amount == Decimal("200.00")
-
-
-def test_transactions_edit_with_full_payment_sets_amount_paid_to_total(
-    logged_in_client, sample_transaction, db_session
-):
-    tx_id = sample_transaction.id
-    item_id = sample_transaction.items[0].id
-
-    logged_in_client.post(
-        f"/transactions/{tx_id}/edit",
-        data={
-            "payment_status": "full",
-            "amount_paid": "0",
-            "items": json.dumps([{"item_id": item_id, "quantity": "2"}]),
-        },
-        follow_redirects=True,
-    )
-    db_session.refresh(sample_transaction)
-    assert sample_transaction.amount_paid == sample_transaction.total_amount
 
 
 def test_transactions_edit_updates_customer_id(
@@ -215,8 +157,6 @@ def test_transactions_edit_non_sale_transaction_returns_403(logged_in_client, db
     tx = Transaction(
         transaction_type="restock",
         total_amount="100.00",
-        amount_paid="0.00",
-        payment_status="unpaid",
     )
     db_session.add(tx)
     db_session.commit()

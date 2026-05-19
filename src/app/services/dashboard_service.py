@@ -1,9 +1,40 @@
 from datetime import datetime, timezone, timedelta
 
-from sqlalchemy import func
+from sqlalchemy import func, and_
 
 from app import db
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionLedgerEntry
+
+
+def _net_collected(tx_type_filter, date_filter=None):
+    """
+    Compute net cash collected for the given transaction type filter.
+
+    net = payments − (change + refunds + discounts) + adjustments
+
+    Adjustments are signed: positive = credit (reduces what is owed),
+    negative = debit (increases what is owed).
+
+    Returns a float.
+    """
+    CREDIT_TYPES = ("payment",)
+    DEBIT_TYPES = ("change", "refund", "discount")
+
+    base = (
+        db.session.query(func.coalesce(func.sum(TransactionLedgerEntry.amount), 0))
+        .join(Transaction, TransactionLedgerEntry.transaction_id == Transaction.id)
+    )
+
+    credits = base.filter(tx_type_filter, TransactionLedgerEntry.entry_type.in_(CREDIT_TYPES))
+    debits = base.filter(tx_type_filter, TransactionLedgerEntry.entry_type.in_(DEBIT_TYPES))
+    adjustments = base.filter(tx_type_filter, TransactionLedgerEntry.entry_type == "adjustment")
+
+    if date_filter is not None:
+        credits = credits.filter(date_filter)
+        debits = debits.filter(date_filter)
+        adjustments = adjustments.filter(date_filter)
+
+    return float(credits.scalar()) - float(debits.scalar()) + float(adjustments.scalar())
 
 
 def get_stats() -> dict:
@@ -11,16 +42,12 @@ def get_stats() -> dict:
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    total_revenue = db.session.query(
-        func.coalesce(func.sum(Transaction.amount_paid), 0)
-    ).filter(Transaction.transaction_type == "sale").scalar()
+    total_revenue = _net_collected(Transaction.transaction_type == "sale")
 
-    today_revenue = db.session.query(
-        func.coalesce(func.sum(Transaction.amount_paid), 0)
-    ).filter(
+    today_revenue = _net_collected(
         Transaction.transaction_type == "sale",
-        Transaction.created_at >= today_start,
-    ).scalar()
+        date_filter=Transaction.created_at >= today_start,
+    )
 
     today_tx_count = Transaction.query.filter(
         Transaction.transaction_type == "sale",
@@ -28,8 +55,8 @@ def get_stats() -> dict:
     ).count()
 
     return {
-        "total_revenue": float(total_revenue),
-        "today_revenue": float(today_revenue),
+        "total_revenue": total_revenue,
+        "today_revenue": today_revenue,
         "today_tx_count": today_tx_count,
     }
 
@@ -39,16 +66,8 @@ _EXPENSE_TYPES = ("restock", "stock_restock")
 
 def get_financial_summary() -> dict:
     """Return all-time revenue, expenses, and net figures."""
-    revenue = db.session.query(
-        func.coalesce(func.sum(Transaction.amount_paid), 0)
-    ).filter(Transaction.transaction_type == "sale").scalar()
-
-    expenses = db.session.query(
-        func.coalesce(func.sum(Transaction.amount_paid), 0)
-    ).filter(Transaction.transaction_type.in_(_EXPENSE_TYPES)).scalar()
-
-    revenue = float(revenue)
-    expenses = float(expenses)
+    revenue = _net_collected(Transaction.transaction_type == "sale")
+    expenses = _net_collected(Transaction.transaction_type.in_(_EXPENSE_TYPES))
 
     return {
         "revenue": revenue,
@@ -95,21 +114,16 @@ def get_chart_data(days: int = 7) -> dict:
         day_start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
         day_end = day_start + timedelta(days=1)
 
-        revenue = float(db.session.query(
-            func.coalesce(func.sum(Transaction.amount_paid), 0)
-        ).filter(
-            Transaction.transaction_type == "sale",
-            Transaction.created_at >= day_start,
-            Transaction.created_at < day_end,
-        ).scalar())
+        day_filter = and_(Transaction.created_at >= day_start, Transaction.created_at < day_end)
 
-        expenses = float(db.session.query(
-            func.coalesce(func.sum(Transaction.amount_paid), 0)
-        ).filter(
+        revenue = _net_collected(
+            Transaction.transaction_type == "sale",
+            date_filter=day_filter,
+        )
+        expenses = _net_collected(
             Transaction.transaction_type.in_(_EXPENSE_TYPES),
-            Transaction.created_at >= day_start,
-            Transaction.created_at < day_end,
-        ).scalar())
+            date_filter=day_filter,
+        )
 
         labels.append(day.strftime("%b %d"))
         revenue_data.append(revenue)

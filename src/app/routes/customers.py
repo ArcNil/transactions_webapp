@@ -3,7 +3,13 @@ from flask_login import login_required, current_user
 from app import db
 from app.models.customer import Customer
 from app.forms.customer import CustomerForm
-from app.utils.monitor import record_action
+from app.services.customer_service import (
+    get_all_customers,
+    add_customer,
+    edit_customer,
+    delete_customer,
+    CustomerError,
+)
 
 bp = Blueprint("customers", __name__, url_prefix="/customers")
 
@@ -11,7 +17,7 @@ bp = Blueprint("customers", __name__, url_prefix="/customers")
 @bp.route("/")
 @login_required
 def index():
-    customers = Customer.query.order_by(Customer.name).all()
+    customers = get_all_customers()
     form = CustomerForm()
     return render_template("customers/index.html", customers=customers, form=form)
 
@@ -21,10 +27,7 @@ def index():
 def add():
     form = CustomerForm()
     if form.validate_on_submit():
-        customer = Customer(name=form.name.data)
-        db.session.add(customer)
-        db.session.commit()
-        record_action(current_user.id, current_user.username, "customer.added", customer.name)
+        customer = add_customer(form, current_user.id, current_user.username)
         flash(f'Customer "{customer.name}" added.', "success")
     else:
         for field, errors in form.errors.items():
@@ -39,9 +42,7 @@ def edit(customer_id):
     customer = db.get_or_404(Customer, customer_id)
     form = CustomerForm()
     if form.validate_on_submit():
-        customer.name = form.name.data
-        db.session.commit()
-        record_action(current_user.id, current_user.username, "customer.edited", customer.name)
+        edit_customer(customer, form, current_user.id, current_user.username)
         flash(f'Customer "{customer.name}" updated.', "success")
     else:
         for field, errors in form.errors.items():
@@ -54,8 +55,11 @@ def edit(customer_id):
 @login_required
 def delete(customer_id):
     customer = db.get_or_404(Customer, customer_id)
-    db.session.delete(customer)
-    db.session.commit()
-    record_action(current_user.id, current_user.username, "customer.deleted", customer.name)
-    flash(f'Customer "{customer.name}" removed.', "success")
+    customer_name = customer.name
+    try:
+        delete_customer(customer, current_user.id, current_user.username)
+        flash(f'Customer "{customer_name}" removed.', "success")
+    except CustomerError as e:
+        flash(str(e), "danger")
     return redirect(url_for("customers.index"))
+

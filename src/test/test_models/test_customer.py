@@ -32,15 +32,11 @@ def test_customer_can_have_multiple_transactions(db_session):
         customer_id=customer.id,
         transaction_type="sale",
         total_amount="50.00",
-        amount_paid="50.00",
-        payment_status="full",
     )
     tx2 = Transaction(
         customer_id=customer.id,
         transaction_type="sale",
         total_amount="30.00",
-        amount_paid="0.00",
-        payment_status="unpaid",
     )
     db_session.add_all([tx1, tx2])
     db_session.commit()
