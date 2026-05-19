@@ -27,4 +27,4 @@ echo "==> Seeding default user..."
 flask seed
 
 echo "==> Starting server..."
-exec gunicorn --bind 0.0.0.0:5000 --workers 2 main:app
+exec gunicorn --bind 0.0.0.0:5000 --workers 2 --worker-tmp-dir /dev/shm main:app

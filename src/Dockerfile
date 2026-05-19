@@ -15,10 +15,11 @@ COPY . .
 RUN chmod +x /app/entrypoint.sh \
     && addgroup --system appgroup \
     && adduser --system --ingroup appgroup --no-create-home appuser \
-    && mkdir -p /app/.pytest_cache \
-    && chown -R appuser:appgroup /app
+    && mkdir -p /app/.pytest_cache /home/appuser \
+    && chown -R appuser:appgroup /app /home/appuser
 
 USER appuser
+ENV HOME=/home/appuser
 
 EXPOSE 5000
 
