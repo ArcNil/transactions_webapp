@@ -1,6 +1,16 @@
 {% extends 'base.html' %}
 {% block title %}Transactions{% endblock %}
 
+{% block extra_css %}
+<style>
+  .sortable-th { cursor: pointer; user-select: none; white-space: nowrap; }
+  .sortable-th:hover { background-color: rgba(0,0,0,.04); }
+  [data-bs-theme="dark"] .sortable-th:hover { background-color: rgba(255,255,255,.06); }
+  .sort-arrow { font-size: .7em; opacity: .4; margin-left: .2rem; }
+  .sort-arrow.active { opacity: 1; }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h1><i class="bi bi-receipt me-2 text-primary"></i>Transactions</h1>
@@ -25,28 +35,54 @@
 </ul>
 
 <div class="tab-content">
-    <!-- Sales tab -->
+
+    <!-- ── Sales tab ── -->
     <div class="tab-pane fade show active" id="sales-pane" role="tabpanel">
+
+        <!-- Filter bar -->
+        <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+            <input type="search" id="salesSearch" class="form-control form-control-sm"
+                   style="max-width:220px" placeholder="Search customer or items…">
+            <select id="salesStatusFilter" class="form-select form-select-sm" style="max-width:160px">
+                <option value="">All statuses</option>
+                <option value="closed">Closed</option>
+                <option value="settled">Settled</option>
+                <option value="overpaid">Overpaid</option>
+                <option value="owed">Balance owed</option>
+            </select>
+            <button id="salesClear" class="btn btn-sm btn-outline-secondary" type="button">✕ Clear</button>
+        </div>
+
         <div class="card">
             <div class="card-body p-0">
                 {% if sales %}
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0 align-middle small">
+                    <table class="table table-hover mb-0 align-middle small" id="salesTable">
                         <thead class="table-light">
                             <tr>
-                                <th>Date</th>
-                                <th>Customer</th>
+                                <th class="sortable-th" data-col="date">Date <span class="sort-arrow active">↓</span></th>
+                                <th class="sortable-th" data-col="customer">Customer <span class="sort-arrow">↕</span></th>
                                 <th>Items</th>
-                                <th class="text-end">Total</th>
-                                <th class="text-end">Balance</th>
+                                <th class="text-end sortable-th" data-col="total">Total <span class="sort-arrow">↕</span></th>
+                                <th class="text-end sortable-th" data-col="balance">Balance <span class="sort-arrow">↕</span></th>
                                 <th>Status</th>
                                 <th></th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="salesTbody">
                             {% for tx in sales %}
                             {% set bal = tx.balance %}
-                            <tr class="fw-medium">
+                            {% if tx.is_closed %}{% set sk = 'closed' %}
+                            {% elif bal > 0 %}{% set sk = 'overpaid' %}
+                            {% elif bal < 0 %}{% set sk = 'owed' %}
+                            {% else %}{% set sk = 'settled' %}{% endif %}
+                            <tr class="fw-medium"
+                                data-date="{{ tx.created_at.strftime('%Y%m%d%H%M%S') }}"
+                                data-customer="{{ (tx.customer.name if tx.customer else 'Walk-in')|lower }}"
+                                data-items="{% for item in tx.items %}{{ item.product_name_snapshot|lower }}{% if not loop.last %} {% endif %}{% endfor %}"
+                                data-total="{{ tx.total_amount }}"
+                                data-balance="{{ tx.balance }}"
+                                data-status="{{ sk }}">
                                 <td class="text-muted text-nowrap">{{ tx.created_at.strftime('%b %d, %H:%M') }}</td>
                                 <td>{{ tx.customer.name if tx.customer else 'Walk-in' }}</td>
                                 <td class="text-muted">
@@ -86,6 +122,9 @@
                         </tbody>
                     </table>
                 </div>
+                <div id="salesPagBar"
+                     class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-2 border-top small text-muted">
+                </div>
                 {% else %}
                 <div class="text-center text-muted py-5">
                     <i class="bi bi-receipt fs-2 d-block mb-2"></i>
@@ -96,29 +135,59 @@
         </div>
     </div>
 
-    <!-- Expenses tab -->
+    <!-- ── Expenses tab ── -->
     <div class="tab-pane fade" id="expenses-pane" role="tabpanel">
+
+        <!-- Filter bar -->
+        <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+            <input type="search" id="expensesSearch" class="form-control form-control-sm"
+                   style="max-width:220px" placeholder="Search vendor or items…">
+            <select id="expensesTypeFilter" class="form-select form-select-sm" style="max-width:180px">
+                <option value="">All types</option>
+                <option value="restock">Product Restock</option>
+                <option value="stock_restock">Raw Stock Restock</option>
+            </select>
+            <select id="expensesStatusFilter" class="form-select form-select-sm" style="max-width:160px">
+                <option value="">All statuses</option>
+                <option value="closed">Closed</option>
+                <option value="settled">Settled</option>
+                <option value="overpaid">Overpaid</option>
+                <option value="owed">Balance owed</option>
+            </select>
+            <button id="expensesClear" class="btn btn-sm btn-outline-secondary" type="button">✕ Clear</button>
+        </div>
+
         <div class="card">
             <div class="card-body p-0">
                 {% if expenses %}
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0 align-middle small">
+                    <table class="table table-hover mb-0 align-middle small" id="expensesTable">
                         <thead class="table-light">
                             <tr>
-                                <th>Date</th>
+                                <th class="sortable-th" data-col="date">Date <span class="sort-arrow active">↓</span></th>
                                 <th>Type</th>
-                                <th>Vendor</th>
+                                <th class="sortable-th" data-col="vendor">Vendor <span class="sort-arrow">↕</span></th>
                                 <th>Items</th>
-                                <th class="text-end">Total</th>
-                                <th class="text-end">Balance</th>
+                                <th class="text-end sortable-th" data-col="total">Total <span class="sort-arrow">↕</span></th>
+                                <th class="text-end sortable-th" data-col="balance">Balance <span class="sort-arrow">↕</span></th>
                                 <th>Status</th>
                                 <th></th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="expensesTbody">
                             {% for tx in expenses %}
                             {% set bal = tx.balance %}
-                            <tr>
+                            {% if tx.is_closed %}{% set sk = 'closed' %}
+                            {% elif bal > 0 %}{% set sk = 'overpaid' %}
+                            {% elif bal < 0 %}{% set sk = 'owed' %}
+                            {% else %}{% set sk = 'settled' %}{% endif %}
+                            <tr data-date="{{ tx.created_at.strftime('%Y%m%d%H%M%S') }}"
+                                data-type="{{ tx.transaction_type }}"
+                                data-vendor="{{ (tx.vendor.name if tx.vendor else '')|lower }}"
+                                data-items="{% for item in tx.items %}{{ item.product_name_snapshot|lower }}{% if not loop.last %} {% endif %}{% endfor %}"
+                                data-total="{{ tx.total_amount }}"
+                                data-balance="{{ tx.balance }}"
+                                data-status="{{ sk }}">
                                 <td class="text-muted text-nowrap">{{ tx.created_at.strftime('%b %d, %H:%M') }}</td>
                                 <td>
                                     {% if tx.transaction_type == 'restock' %}
@@ -165,6 +234,9 @@
                         </tbody>
                     </table>
                 </div>
+                <div id="expensesPagBar"
+                     class="d-flex align-items-center justify-content-between flex-wrap gap-2 px-3 py-2 border-top small text-muted">
+                </div>
                 {% else %}
                 <div class="text-center text-muted py-5">
                     <i class="bi bi-box-arrow-in-down fs-2 d-block mb-2"></i>
@@ -174,5 +246,214 @@
             </div>
         </div>
     </div>
+
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+    'use strict';
+    const PAGE_SIZE = 20;
+
+    /* ── Shared pagination renderer ── */
+    function renderPagination(pagBar, page, totalPages, total, onPageChange) {
+        pagBar.innerHTML = '';
+
+        const info = document.createElement('span');
+        if (total > 0) {
+            const s = (page - 1) * PAGE_SIZE + 1;
+            const e = Math.min(page * PAGE_SIZE, total);
+            info.textContent = 'Showing ' + s + '–' + e + ' of ' + total;
+        }
+        pagBar.appendChild(info);
+
+        if (totalPages <= 1) return;
+
+        const nav = document.createElement('nav');
+        const ul  = document.createElement('ul');
+        ul.className = 'pagination pagination-sm mb-0';
+
+        function makeItem(label, target, disabled, active) {
+            const li  = document.createElement('li');
+            li.className = 'page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'page-link';
+            btn.textContent = label;
+            if (!disabled && !active) btn.addEventListener('click', function () { onPageChange(target); });
+            li.appendChild(btn);
+            return li;
+        }
+
+        ul.appendChild(makeItem('‹', page - 1, page === 1, false));
+        const pages = [];
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= page - 2 && i <= page + 2)) {
+                pages.push(i);
+            } else if (pages[pages.length - 1] !== '…') {
+                pages.push('…');
+            }
+        }
+        pages.forEach(function (p) {
+            ul.appendChild(p === '…'
+                ? makeItem('…', null, true, false)
+                : makeItem(p, p, false, p === page));
+        });
+        ul.appendChild(makeItem('›', page + 1, page === totalPages, false));
+
+        nav.appendChild(ul);
+        pagBar.appendChild(nav);
+    }
+
+    /* ── Table initialiser ── */
+    function initTable(cfg) {
+        /* cfg: { tbodyId, pagBarId, searchId, clearId, filterIds[], filterKeys[], tableId } */
+        var tbody    = document.getElementById(cfg.tbodyId);
+        var pagBar   = document.getElementById(cfg.pagBarId);
+        var searchEl = document.getElementById(cfg.searchId);
+        var clearBtn = document.getElementById(cfg.clearId);
+        var table    = document.getElementById(cfg.tableId);
+        var filters  = cfg.filterIds.map(function (id) { return document.getElementById(id); });
+
+        if (!tbody) return;
+
+        var sortCol = 'date', sortAsc = false, currentPage = 1;
+
+        function rows() { return Array.from(tbody.querySelectorAll('tr:not(.no-results-row)')); }
+
+        function refresh() {
+            var search = searchEl ? searchEl.value.toLowerCase().trim() : '';
+            var filterVals = filters.map(function (f) { return f ? f.value : ''; });
+
+            var visible = rows().filter(function (r) {
+                /* Text search across customer/vendor + items */
+                if (search) {
+                    var hay = (r.dataset.customer || '') + ' ' +
+                              (r.dataset.vendor   || '') + ' ' +
+                              (r.dataset.items    || '');
+                    if (!hay.includes(search)) return false;
+                }
+                /* Dropdown filters */
+                for (var i = 0; i < cfg.filterKeys.length; i++) {
+                    if (filterVals[i] && r.dataset[cfg.filterKeys[i]] !== filterVals[i]) return false;
+                }
+                return true;
+            });
+
+            /* Sort */
+            visible.sort(function (a, b) {
+                var av = a.dataset[sortCol] || '';
+                var bv = b.dataset[sortCol] || '';
+                var n  = parseFloat(av);
+                if (!isNaN(n)) {
+                    av = n; bv = parseFloat(bv) || 0;
+                    return sortAsc ? av - bv : bv - av;
+                }
+                return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+            });
+
+            /* Pagination */
+            var total      = visible.length;
+            var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+            if (currentPage > totalPages) currentPage = totalPages;
+            var start  = (currentPage - 1) * PAGE_SIZE;
+            var pageSet = new Set(visible.slice(start, start + PAGE_SIZE));
+
+            rows().forEach(function (r) { r.classList.add('d-none'); });
+            pageSet.forEach(function (r) { r.classList.remove('d-none'); });
+
+            /* No-results row */
+            var noRow = tbody.querySelector('.no-results-row');
+            if (total === 0) {
+                if (!noRow) {
+                    noRow = document.createElement('tr');
+                    noRow.className = 'no-results-row';
+                    var cols = table ? table.querySelectorAll('thead th').length : 7;
+                    noRow.innerHTML = '<td colspan="' + cols + '" class="text-center text-muted py-4">' +
+                                      'No transactions match your filters.</td>';
+                    tbody.appendChild(noRow);
+                }
+                noRow.classList.remove('d-none');
+            } else if (noRow) {
+                noRow.classList.add('d-none');
+            }
+
+            renderPagination(pagBar, currentPage, totalPages, total, function (p) {
+                currentPage = p;
+                refresh();
+            });
+            updateArrows();
+        }
+
+        function updateArrows() {
+            if (!table) return;
+            table.querySelectorAll('th.sortable-th').forEach(function (th) {
+                var arrow = th.querySelector('.sort-arrow');
+                if (!arrow) return;
+                if (th.dataset.col === sortCol) {
+                    arrow.textContent = sortAsc ? '↑' : '↓';
+                    arrow.classList.add('active');
+                } else {
+                    arrow.textContent = '↕';
+                    arrow.classList.remove('active');
+                }
+            });
+        }
+
+        /* Sortable header clicks */
+        if (table) {
+            table.querySelectorAll('th.sortable-th').forEach(function (th) {
+                th.addEventListener('click', function () {
+                    var col = th.dataset.col;
+                    if (sortCol === col) {
+                        sortAsc = !sortAsc;
+                    } else {
+                        sortCol = col;
+                        /* Numeric cols default desc; text cols default asc */
+                        sortAsc = (col === 'customer' || col === 'vendor');
+                    }
+                    currentPage = 1;
+                    refresh();
+                });
+            });
+        }
+
+        if (searchEl) searchEl.addEventListener('input',  function () { currentPage = 1; refresh(); });
+        filters.forEach(function (f) {
+            if (f) f.addEventListener('change', function () { currentPage = 1; refresh(); });
+        });
+        if (clearBtn) clearBtn.addEventListener('click', function () {
+            if (searchEl) searchEl.value = '';
+            filters.forEach(function (f) { if (f) f.value = ''; });
+            sortCol = 'date'; sortAsc = false;
+            currentPage = 1;
+            refresh();
+        });
+
+        refresh();
+    }
+
+    /* ── Init both tables ── */
+    initTable({
+        tableId:    'salesTable',
+        tbodyId:    'salesTbody',
+        pagBarId:   'salesPagBar',
+        searchId:   'salesSearch',
+        clearId:    'salesClear',
+        filterIds:  ['salesStatusFilter'],
+        filterKeys: ['status'],
+    });
+
+    initTable({
+        tableId:    'expensesTable',
+        tbodyId:    'expensesTbody',
+        pagBarId:   'expensesPagBar',
+        searchId:   'expensesSearch',
+        clearId:    'expensesClear',
+        filterIds:  ['expensesTypeFilter', 'expensesStatusFilter'],
+        filterKeys: ['type', 'status'],
+    });
+}());
+</script>
 {% endblock %}
