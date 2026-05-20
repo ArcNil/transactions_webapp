@@ -64,25 +64,8 @@
 </div>
 
 <div class="row g-3">
-    <!-- Products + Vendor selector -->
+    <!-- Products panel -->
     <div class="col-12 col-lg-7 col-xl-8">
-
-        <!-- Vendor selector -->
-        <div class="card mb-3">
-            <div class="card-body py-2 px-3">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="bi bi-truck text-muted fs-5 flex-shrink-0"></i>
-                    <div class="flex-grow-1">
-                        <select id="vendorSelect" class="form-select form-select-sm">
-                            <option value="">— Select vendor —</option>
-                            {% for v in vendors %}
-                            <option value="{{ v.id }}">{{ v.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
 
         <!-- Product grid -->
         <div class="card">
@@ -104,11 +87,9 @@
                                 onclick="openQtyModal(this)">
                             <div class="p-name">{{ p.name }}</div>
                             <div class="p-price">{{ p.unit }} · ₱{{ p.price }}</div>
-                            <div class="p-stock">
-                                {% for ing in p.ingredients %}
-                                {{ ing.quantity }} {{ ing.stock_item.unit }} {{ ing.stock_item.name }}{% if not loop.last %}, {% endif %}
-                                {% endfor %}
-                            </div>
+                            {% if p.vendor %}
+                            <div class="p-stock"><i class="bi bi-truck me-1"></i>{{ p.vendor.name }}</div>
+                            {% endif %}
                         </button>
                     </div>
                     {% endfor %}
@@ -179,7 +160,6 @@
             <div class="p-3">
                 <form id="restockForm" method="POST" action="{{ url_for('restock.save') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="vendor_id"      id="hVendor">
                     <input type="hidden" name="payment_status" id="hStatus">
                     <input type="hidden" name="amount_paid"    id="hAmountPaid">
                     <input type="hidden" name="items"          id="hItems">
@@ -359,17 +339,12 @@ function selectPayment(type) {
 }
 
 function refreshSaveBtn() {
-    const vendorSelected = document.getElementById('vendorSelect').value !== '';
     document.getElementById('saveBtn').disabled =
-        !(cart.length > 0 && selectedPayment !== null && vendorSelected);
+        !(cart.length > 0 && selectedPayment !== null);
 }
-
-document.getElementById('vendorSelect').addEventListener('change', refreshSaveBtn);
 
 /* ── Form submit ── */
 document.getElementById('restockForm').addEventListener('submit', () => {
-    document.getElementById('hVendor').value =
-        document.getElementById('vendorSelect').value;
     document.getElementById('hStatus').value = selectedPayment;
     document.getElementById('hItems').value = JSON.stringify(
         cart.map(i => ({ product_id: i.product_id, quantity: i.quantity, unit_price: i.unit_price }))

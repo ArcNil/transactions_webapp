@@ -1,5 +1,7 @@
 from decimal import Decimal, InvalidOperation
+from datetime import timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
 from app import db
@@ -13,14 +15,67 @@ class ProductError(ValueError):
     """Raised when a product operation cannot be completed."""
 
 
-def get_all_products_with_ingredients() -> list[Product]:
-    """Return all products, eagerly loading ingredients and their stock items."""
-    return (
-        Product.query
-        .options(joinedload(Product.ingredients).joinedload(ProductIngredient.stock_item))
-        .order_by(Product.name)
-        .all()
+def get_all_products_with_ingredients(include_inactive: bool = False) -> list[Product]:
+    """Return products, eagerly loading ingredients and their stock items.
+
+    By default only active products are returned. Pass include_inactive=True
+    to include deactivated products (used by the 'show deactivated' toggle).
+    """
+    q = Product.query.options(
+        joinedload(Product.ingredients).joinedload(ProductIngredient.stock_item)
     )
+    if not include_inactive:
+        q = q.filter(Product.is_active.is_(True))
+    return q.order_by(Product.name).all()
+
+
+def count_inactive_products() -> int:
+    """Return the number of deactivated products."""
+    return Product.query.filter(Product.is_active.is_(False)).count()
+
+
+def get_products_with_last_used(include_inactive: bool = False) -> list[tuple]:
+    """Return (Product, last_used_epoch_int) pairs ordered by most-recently sold first.
+
+    last_used_epoch_int is a Unix timestamp (int seconds) of the most recent sale
+    transaction for that product, or 0 if it has never been sold.
+    Products never sold sort last, then alphabetically by name.
+    """
+    # Import here to avoid any circular-import risk.
+    from app.models.transaction import Transaction, TransactionItem
+
+    last_used_sub = (
+        db.session.query(
+            TransactionItem.product_id,
+            func.max(Transaction.created_at).label("last_used_at"),
+        )
+        .join(Transaction, TransactionItem.transaction_id == Transaction.id)
+        .filter(
+            Transaction.transaction_type == "sale",
+            TransactionItem.product_id.isnot(None),
+        )
+        .group_by(TransactionItem.product_id)
+        .subquery()
+    )
+
+    q = (
+        db.session.query(Product, last_used_sub.c.last_used_at)
+        .options(joinedload(Product.ingredients).joinedload(ProductIngredient.stock_item))
+        .outerjoin(last_used_sub, Product.id == last_used_sub.c.product_id)
+    )
+
+    if not include_inactive:
+        q = q.filter(Product.is_active.is_(True))
+
+    q = q.order_by(
+        last_used_sub.c.last_used_at.desc().nullslast(),
+        Product.name.asc(),
+    )
+
+    return [
+        (p, int(last_used_at.replace(tzinfo=timezone.utc).timestamp()) if last_used_at else 0)
+        for p, last_used_at in q.all()
+    ]
 
 
 def get_all_stock_items() -> list[StockItem]:
@@ -97,15 +152,22 @@ def upsert_ingredient(
     )
 
 
-def add_product(form, user_id: int, username: str, vendor_id: int | None = None) -> Product:
+def add_product(
+    form, user_id: int, username: str, vendor_id: int | None = None, photo_data: str | None = None
+) -> Product:
     """Create and persist a new product from a validated ProductForm."""
+    product_type = form.product_type.data
+    # Purchase items are raw materials — hide from POS unless explicitly enabled.
+    show_in_pos = form.show_in_pos.data if product_type == "sale" else False
     product = Product(
         name=form.name.data,
+        product_type=product_type,
         unit=form.unit.data,
         price=form.price.data,
         is_active=form.is_active.data,
-        show_in_pos=form.show_in_pos.data,
+        show_in_pos=show_in_pos,
         vendor_id=vendor_id,
+        photo_data=photo_data,
     )
     db.session.add(product)
     try:
@@ -117,14 +179,29 @@ def add_product(form, user_id: int, username: str, vendor_id: int | None = None)
     return product
 
 
-def edit_product(product: Product, form, user_id: int, username: str, vendor_id: int | None = None) -> Product:
+def edit_product(
+    product: Product,
+    form,
+    user_id: int,
+    username: str,
+    vendor_id: int | None = None,
+    photo_data: str | None = None,
+    remove_photo: bool = False,
+) -> Product:
     """Update an existing product from a validated ProductForm."""
+    product_type = form.product_type.data
     product.name = form.name.data
+    product.product_type = product_type
     product.unit = form.unit.data
     product.price = form.price.data
     product.is_active = form.is_active.data
-    product.show_in_pos = form.show_in_pos.data
+    # Purchase items cannot be shown in POS.
+    product.show_in_pos = form.show_in_pos.data if product_type == "sale" else False
     product.vendor_id = vendor_id
+    if remove_photo:
+        product.photo_data = None
+    elif photo_data is not None:
+        product.photo_data = photo_data
     try:
         db.session.commit()
     except Exception:
@@ -146,7 +223,12 @@ def deactivate_product(product: Product, user_id: int, username: str) -> None:
 
 
 def toggle_pos(product: Product, user_id: int, username: str) -> Product:
-    """Toggle the show_in_pos flag for a product."""
+    """Toggle the show_in_pos flag for a product.
+
+    Purchase-type products cannot be shown in POS — raises ProductError if attempted.
+    """
+    if product.product_type == "purchase":
+        raise ProductError("Purchase products cannot be shown in POS.")
     product.show_in_pos = not product.show_in_pos
     try:
         db.session.commit()

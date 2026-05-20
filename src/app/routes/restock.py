@@ -4,7 +4,6 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from decimal import Decimal, InvalidOperation
 from app.models.product import Product
-from app.models.vendor import Vendor
 from app.services.transaction_service import create_product_restock, TransactionError
 from app.services.ledger_service import add_entry
 from app.utils.monitor import record_action
@@ -17,18 +16,14 @@ bp = Blueprint("restock", __name__, url_prefix="/restock")
 @bp.route("/")
 @login_required
 def index():
-    # Show products linked to a vendor — these are purchasable items.
-    # Products with ingredients also increment raw stock when restocked;
-    # products without ingredients record the transaction only (e.g. services/fees).
+    # Show only purchase-type products — these are restockable raw materials.
     products = (
         Product.query
-        .filter(Product.vendor_id.isnot(None))
+        .filter(Product.product_type == "purchase")
         .order_by(Product.name)
         .all()
     )
-    vendors = Vendor.query.order_by(Vendor.name).all()
-    vendors_json = [{"id": v.id, "name": v.name} for v in vendors]
-    return render_template("restock/index.html", products=products, vendors=vendors_json)
+    return render_template("restock/index.html", products=products)
 
 
 @bp.route("/save", methods=["POST"])
@@ -37,7 +32,6 @@ def save():
     try:
         tx = create_product_restock(
             items_raw=request.form.get("items", "[]"),
-            vendor_id=request.form.get("vendor_id") or "",
         )
     except TransactionError as e:
         flash(str(e), "danger")

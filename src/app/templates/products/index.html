@@ -40,47 +40,178 @@
     background-color: var(--bs-secondary-bg);
     color: var(--bs-body-color);
   }
+
+  /* Product card photo area */
+  /* Product card base (works in both themes) */
+  .product-card .card {
+    border-radius: .5rem;
+    overflow: hidden;
+  }
+
+  .product-card-photo {
+    height: 140px;
+    overflow: hidden;
+    background-color: #f0f2f5;  /* light mode */
+  }
+
+  /* Dark mode overrides */
+  [data-bs-theme="dark"] .product-card .card {
+    background-color: #1e2d3d !important;
+    border: 1px solid rgba(255,255,255,0.15) !important;
+  }
+
+  [data-bs-theme="dark"] .product-card-photo {
+    background-color: #162030;
+  }
+  .product-card-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .product-card-photo .placeholder-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--bs-secondary-color);
+    opacity: .4;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header d-flex align-items-center justify-content-between">
     <h1><i class="bi bi-droplet me-2 text-primary"></i>Products</h1>
-    <button class="btn btn-primary btn-sm"
-            data-bs-toggle="modal" data-bs-target="#productModal"
-            onclick="openAddModal()">
-        <i class="bi bi-plus-lg me-1"></i> Add Product
-    </button>
+    <div class="d-flex gap-2 align-items-center">
+        {% if inactive_count > 0 %}
+        <a href="{{ url_for('products.index', show_inactive=0 if show_inactive else 1) }}"
+           class="btn btn-sm {{ 'btn-secondary' if show_inactive else 'btn-outline-secondary' }}">
+            <i class="bi bi-{{ 'eye-slash' if show_inactive else 'eye' }} me-1"></i>
+            {{ 'Hide deactivated' if show_inactive else 'Show deactivated (' ~ inactive_count ~ ')' }}
+        </a>
+        {% endif %}
+        <button class="btn btn-primary btn-sm"
+                data-bs-toggle="modal" data-bs-target="#productModal"
+                onclick="openAddModal()">
+            <i class="bi bi-plus-lg me-1"></i> Add Product
+        </button>
+    </div>
 </div>
 
 <div class="card">
-    <div class="card-body p-0">
+    <!-- Search / filter bar -->
+    <div class="card-body border-bottom pb-2 pt-3 px-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-md-4">
+                <label class="form-label small fw-semibold mb-1">Search</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="search" id="productSearch" class="form-control form-control-sm"
+                           placeholder="Search by name…" autocomplete="off">
+                </div>
+            </div>
+            <div class="col col-md-2">
+                <select id="typeFilter" class="form-select form-select-sm">
+                    <option value="">All types</option>
+                    <option value="sale">Sale</option>
+                    <option value="purchase">Purchase</option>
+                </select>
+            </div>
+            <div class="col col-md-3">
+                <label class="form-label small fw-semibold mb-1" for="vendorDropdownBtn">Vendor</label>
+                <!-- Hidden native select keeps the filter JS contract unchanged -->
+                <select id="vendorFilter" class="d-none" aria-hidden="true" tabindex="-1">
+                    <option value="">All vendors</option>
+                    <option value="__none__">— No vendor —</option>
+                    {% for v in vendors %}
+                    <option value="{{ v.name|lower }}">{{ v.name }}</option>
+                    {% endfor %}
+                </select>
+                <div class="dropdown" id="vendorDropdownWrapper">
+                    <button type="button"
+                            id="vendorDropdownBtn"
+                            class="form-select form-select-sm text-start"
+                            data-bs-toggle="dropdown"
+                            data-bs-auto-close="outside"
+                            aria-expanded="false"
+                            aria-haspopup="listbox">
+                        <span id="vendorDropdownLabel">All vendors</span>
+                    </button>
+                    <div class="dropdown-menu w-100 p-2" role="listbox" aria-labelledby="vendorDropdownBtn">
+                        <input type="search"
+                               id="vendorSearchInput"
+                               class="form-control form-control-sm mb-1"
+                               placeholder="Search vendors…"
+                               autocomplete="off">
+                        <div id="vendorOptionsList" style="max-height: 200px; overflow-y: auto;">
+                            <button type="button" class="dropdown-item rounded-1 small py-1 active" data-vendor-val="" role="option">All vendors</button>
+                            <button type="button" class="dropdown-item rounded-1 small py-1" data-vendor-val="__none__" role="option">— No vendor —</button>
+                            {% for v in vendors %}
+                            <button type="button" class="dropdown-item rounded-1 small py-1" data-vendor-val="{{ v.name|lower }}" role="option">{{ v.name }}</button>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col col-md-2">
+                <label class="form-label small fw-semibold mb-1">Sort</label>
+                <select id="sortSelect" class="form-select form-select-sm">
+                    <option value="lastused:desc">Recently used</option>
+                    <option value="name:asc">Name A–Z</option>
+                    <option value="name:desc">Name Z–A</option>
+                    <option value="price:asc">Price ↑</option>
+                    <option value="price:desc">Price ↓</option>
+                    <option value="available:asc">Stock ↑</option>
+                    <option value="available:desc">Stock ↓</option>
+                </select>
+            </div>
+            <div class="col-auto d-flex align-items-end">
+                <button id="clearFilters" class="btn btn-outline-secondary btn-sm" title="Clear filters">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-3">
         {% if products %}
-        <div class="table-responsive">
-            <table class="table table-hover mb-0 align-middle">
-                <thead class="table-light small">
-                    <tr>
-                        <th>Name</th>
-                        <th>Unit</th>
-                        <th class="text-end">Price</th>
-                        <th class="text-end">Available</th>
-                        <th class="text-center">Status</th>
-                        <th class="text-center">POS</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for p in products %}
-                    <tr>
-                        <td class="fw-semibold">{{ p.name }}</td>
-                        <td class="text-muted small">{{ p.unit }}</td>
-                        <td class="text-end fw-semibold">₱{{ "%.2f"|format(p.price) }}</td>
-                        <td class="text-end">
+        <div id="productsGrid" class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-5 g-3">
+            {% for p in products %}
+            <div class="product-card col{% if not p.is_active %} opacity-75{% endif %}"
+                 data-name="{{ p.name|lower }}"
+                 data-type="{{ p.product_type }}"
+                 data-vendor="{{ p.vendor.name|lower if p.vendor else '__none__' }}"
+                 data-price="{{ p.price }}"
+                 data-available="{{ p.available_stock }}"
+                 data-lastused="{{ last_used_by_product.get(p.id, 0) }}">
+                <div class="card h-100 shadow-sm">
+                    <div class="product-card-photo">
+                        {% if p.photo_data %}
+                        <img src="{{ p.photo_data }}" alt="{{ p.name }}">
+                        {% else %}
+                        <div class="placeholder-icon">
+                            <i class="bi bi-droplet fs-1"></i>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="card-body px-2 pt-2 pb-1">
+                        <div class="fw-semibold small lh-sm mb-1">{{ p.name }}</div>
+                        <div class="d-flex flex-wrap gap-1 mb-1">
+                            {% if p.product_type == 'purchase' %}
+                            <span class="badge text-bg-info text-dark">Purchase</span>
+                            {% else %}
+                            <span class="badge text-bg-primary">Sale</span>
+                            {% endif %}
+                            {% if not p.is_active %}
+                            <span class="badge text-bg-secondary">Inactive</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-muted" style="font-size:.7rem">{{ p.unit }}</div>
+                        <div class="fw-bold small">₱{{ "%.2f"|format(p.price) }}</div>
+                        {% if p.product_type == 'sale' %}
+                        <div class="small mt-1" style="font-size:.75rem">
                             {% set avail = p.available_stock %}
                             {% if p.ingredients %}
-                            <span class="text-muted" style="font-size:.7rem" title="Derived from raw stock">
-                                <i class="bi bi-archive me-1"></i>
-                            </span>
+                            <i class="bi bi-archive me-1 text-muted" style="font-size:.65rem" title="Derived from raw stock"></i>
                             {% endif %}
                             {% if avail == 0 %}
                             <span class="badge text-bg-danger">0</span>
@@ -89,60 +220,63 @@
                             {% else %}
                             <span class="fw-semibold">{{ avail }}</span>
                             {% endif %}
-                        </td>
-                        <td class="text-center">
-                            {% if p.is_active %}
-                            <span class="badge text-bg-success">Active</span>
-                            {% else %}
-                            <span class="badge text-bg-secondary">Inactive</span>
-                            {% endif %}
-                        </td>
-                        <td class="text-center">
-                            <form method="POST" action="/products/{{ p.id }}/toggle_pos" class="d-inline">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-sm btn-link p-0 border-0"
-                                        title="{{ 'Hide from POS' if p.show_in_pos else 'Show in POS' }}">
-                                    {% if p.show_in_pos %}
-                                    <i class="bi bi-eye-fill text-success"></i>
-                                    {% else %}
-                                    <i class="bi bi-eye-slash text-muted"></i>
-                                    {% endif %}
-                                </button>
-                            </form>
-                        </td>
-                        <td class="text-end">
-                            <button class="btn btn-sm btn-light me-1"
+                            <span class="text-muted">in stock</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="card-footer bg-transparent border-0 d-flex justify-content-between align-items-center px-2 pb-2 pt-0 gap-1">
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-sm btn-light px-1 py-0"
                                     title="Manage ingredients"
                                     data-product-id="{{ p.id }}"
-                                    data-product-name="{{ p.name|e }}"
+                                    data-product-name="{{ p.name }}"
                                     data-ingredients="{{ ingredients_by_product[p.id] | tojson | forceescape }}"
                                     onclick="openIngredientsModal(this)">
-                                <i class="bi bi-ui-checks"></i>
+                                <i class="bi bi-ui-checks small"></i>
                             </button>
-                            <button class="btn btn-sm btn-light me-1"
+                            <button class="btn btn-sm btn-light px-1 py-0"
+                                    title="Edit"
                                     data-product-id="{{ p.id }}"
-                                    data-name="{{ p.name|e }}"
-                                    data-unit="{{ p.unit|e }}"
+                                    data-name="{{ p.name }}"
+                                    data-unit="{{ p.unit }}"
                                     data-price="{{ p.price }}"
                                     data-is-active="{{ 'true' if p.is_active else 'false' }}"
                                     data-show-in-pos="{{ 'true' if p.show_in_pos else 'false' }}"
+                                    data-product-type="{{ p.product_type }}"
                                     data-vendor-id="{{ p.vendor_id or '' }}"
+                                    data-has-photo="{{ 'true' if p.photo_data else 'false' }}"
                                     data-ingredients="{{ ingredients_by_product[p.id] | tojson | forceescape }}"
                                     onclick="openEditModal(this)">
-                                <i class="bi bi-pencil"></i>
+                                <i class="bi bi-pencil small"></i>
                             </button>
-                            <button class="btn btn-sm btn-light text-danger"
+                            <button class="btn btn-sm btn-light px-1 py-0 text-danger"
+                                    title="Delete"
                                     data-product-id="{{ p.id }}"
-                                    data-product-name="{{ p.name|e }}"
+                                    data-product-name="{{ p.name }}"
                                     onclick="openDeleteModal(this)">
-                                <i class="bi bi-trash3"></i>
+                                <i class="bi bi-trash3 small"></i>
                             </button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+                        </div>
+                        <form method="POST" action="/products/{{ p.id }}/toggle_pos" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-sm btn-link p-0 border-0"
+                                    title="{{ 'Hide from POS' if p.show_in_pos else 'Show in POS' }}">
+                                {% if p.show_in_pos %}
+                                <i class="bi bi-eye-fill text-success"></i>
+                                {% else %}
+                                <i class="bi bi-eye-slash text-muted"></i>
+                                {% endif %}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
         </div>
+        <div id="noResultsMsg" class="d-none text-center text-muted py-5">
+            <i class="bi bi-search me-2"></i>No products match your filters.
+        </div>
+        <div id="paginationBar" class="d-flex justify-content-between align-items-center flex-wrap gap-2 px-1 py-2 mt-2 border-top small text-muted"></div>
         {% else %}
         <div class="text-center text-muted py-5">
             <i class="bi bi-droplet fs-2 d-block mb-2"></i>
@@ -151,12 +285,11 @@
         {% endif %}
     </div>
 </div>
-
 <!-- Add / Edit modal -->
 <div class="modal fade" id="productModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-0 shadow">
-            <form id="productForm" method="POST">
+            <form id="productForm" method="POST" enctype="multipart/form-data">
                 {{ form.hidden_tag() }}
                 <div class="modal-header border-0">
                     <h5 class="modal-title fw-bold" id="productModalTitle">Add Product</h5>
@@ -166,6 +299,15 @@
                     <div class="mb-3">
                         {{ form.name.label(class="form-label fw-semibold small") }}
                         {{ form.name(class="form-control", placeholder="e.g. Gallon") }}
+                    </div>
+                    <div class="mb-3">
+                        {{ form.product_type.label(class="form-label fw-semibold small") }}
+                        {{ form.product_type(class="form-select", id="productTypeSelect") }}
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1"></i>
+                            <strong>Purchase</strong> items appear in Restock.
+                            <strong>Sale</strong> items appear in POS.
+                        </div>
                     </div>
                     <div class="mb-3">
                         {{ form.unit.label(class="form-label fw-semibold small") }}
@@ -186,6 +328,22 @@
                             <option value="{{ v.id }}">{{ v.name }}</option>
                             {% endfor %}
                         </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold small">Photo (optional)</label>
+                        <div id="currentPhotoPreview" class="d-none mb-2">
+                            <img id="currentPhotoImg" src="" alt="Current photo"
+                                 class="rounded border mb-1" style="max-height:80px; max-width:100%">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="remove_photo"
+                                       id="removePhotoCheck" value="1">
+                                <label class="form-check-label small text-danger" for="removePhotoCheck">
+                                    Remove photo
+                                </label>
+                            </div>
+                        </div>
+                        {{ form.photo(class="form-control form-control-sm", accept="image/*") }}
+                        <div class="form-text">Max 2 MB. JPEG, PNG, GIF, or WebP.</div>
                     </div>
                     <div class="form-check">
                         {{ form.is_active(class="form-check-input") }}
@@ -322,6 +480,45 @@ const vendorSelect = new TomSelect('#productVendorSelect', {
     plugins: ['clear_button'],
 });
 
+/* ── Vendor filter — searchable dropdown ── */
+(function () {
+    const hiddenSel = document.getElementById('vendorFilter');
+    const dropBtn   = document.getElementById('vendorDropdownBtn');
+    const labelSpan = document.getElementById('vendorDropdownLabel');
+    const searchBox = document.getElementById('vendorSearchInput');
+    const optList   = document.getElementById('vendorOptionsList');
+    const wrapper   = document.getElementById('vendorDropdownWrapper');
+    if (!dropBtn) return;
+
+    /* Live-filter options as user types. */
+    searchBox.addEventListener('input', function () {
+        const q = this.value.toLowerCase();
+        optList.querySelectorAll('button').forEach(btn => {
+            btn.classList.toggle('d-none', q !== '' && !btn.textContent.toLowerCase().includes(q));
+        });
+    });
+
+    /* Focus search input as soon as dropdown opens. */
+    wrapper.addEventListener('shown.bs.dropdown', () => searchBox.focus());
+
+    /* Restore full option list when dropdown closes. */
+    wrapper.addEventListener('hidden.bs.dropdown', function () {
+        searchBox.value = '';
+        optList.querySelectorAll('button').forEach(btn => btn.classList.remove('d-none'));
+    });
+
+    /* Option selected — update hidden select and trigger filter. */
+    optList.addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-vendor-val]');
+        if (!btn) return;
+        hiddenSel.value = btn.dataset.vendorVal;
+        labelSpan.textContent = btn.textContent.trim();
+        optList.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+        hiddenSel.dispatchEvent(new Event('change'));
+        bootstrap.Dropdown.getInstance(dropBtn)?.hide();
+    });
+})();
+
 /**
  * Build ingredient list rows using DOM methods (no innerHTML with user data → no XSS).
  */
@@ -376,17 +573,21 @@ function openAddModal() {
     document.getElementById('productForm').reset();
     document.getElementById('productForm').querySelector('[name=is_active]').checked = true;
     document.getElementById('productForm').querySelector('[name=show_in_pos]').checked = true;
+    document.getElementById('productTypeSelect').value = 'sale';
     vendorSelect.setValue('');
+    document.getElementById('currentPhotoPreview').classList.add('d-none');
     document.getElementById('editIngredientsSection').classList.add('d-none');
 }
 
 function openEditModal(btn) {
-    const id        = btn.dataset.productId;
-    const name      = btn.dataset.name;
-    const unit      = btn.dataset.unit;
-    const price     = btn.dataset.price;
-    const isActive  = btn.dataset.isActive === 'true';
-    const showInPos = btn.dataset.showInPos === 'true';
+    const id          = btn.dataset.productId;
+    const name        = btn.dataset.name;
+    const unit        = btn.dataset.unit;
+    const price       = btn.dataset.price;
+    const isActive    = btn.dataset.isActive === 'true';
+    const showInPos   = btn.dataset.showInPos === 'true';
+    const productType = btn.dataset.productType || 'sale';
+    const hasPhoto    = btn.dataset.hasPhoto === 'true';
     const ingredients = JSON.parse(btn.dataset.ingredients || '[]');
 
     document.getElementById('productModalTitle').textContent = 'Edit Product';
@@ -397,7 +598,24 @@ function openEditModal(btn) {
     f.querySelector('[name=price]').value = price;
     f.querySelector('[name=is_active]').checked = isActive;
     f.querySelector('[name=show_in_pos]').checked = showInPos;
+    document.getElementById('productTypeSelect').value = productType;
     vendorSelect.setValue(btn.dataset.vendorId || '');
+
+    // Photo preview: read src from the card already in DOM (no duplicate base64 in data attrs)
+    const card   = btn.closest('.product-card');
+    const cardImg = card ? card.querySelector('.product-card-photo img') : null;
+    const previewEl = document.getElementById('currentPhotoPreview');
+    if (hasPhoto && cardImg) {
+        document.getElementById('currentPhotoImg').src = cardImg.src;
+        previewEl.classList.remove('d-none');
+    } else {
+        previewEl.classList.add('d-none');
+    }
+    document.getElementById('removePhotoCheck').checked = false;
+
+    // Clear file input
+    const photoInput = f.querySelector('[name=photo]');
+    if (photoInput) photoInput.value = '';
 
     // Populate raw stock section
     document.getElementById('editIngAddForm').action = editBaseUrl + id + '/ingredients/add';
@@ -425,5 +643,143 @@ function openIngredientsModal(btn) {
     buildIngredientList(document.getElementById('ingList'), productId, ingredients);
     bootstrap.Modal.getOrCreateInstance(document.getElementById('ingredientsModal')).show();
 }
+
+/* ── Search / filter / sort / paginate ── */
+(function () {
+    const PAGE_SIZE    = 20;
+    const searchInput  = document.getElementById('productSearch');
+    const typeFilter   = document.getElementById('typeFilter');
+    const vendorFilter = document.getElementById('vendorFilter');
+    const sortSelect   = document.getElementById('sortSelect');
+    const clearBtn     = document.getElementById('clearFilters');
+    const grid         = document.getElementById('productsGrid');
+    const noResults    = document.getElementById('noResultsMsg');
+    const pagBar       = document.getElementById('paginationBar');
+
+    if (!searchInput || !grid) return;
+
+    let currentPage = 1;
+
+    function getCards() {
+        return Array.from(grid.querySelectorAll('.product-card'));
+    }
+
+    /* Single function that applies filters + pagination together. */
+    function refresh() {
+        const search = searchInput.value.toLowerCase().trim();
+        const type   = typeFilter.value;
+        const vendor = vendorFilter.value;
+
+        const allCards = getCards();
+        const passing  = allCards.filter(c =>
+            (!search || c.dataset.name.includes(search)) &&
+            (!type   || c.dataset.type   === type) &&
+            (!vendor || c.dataset.vendor === vendor)
+        );
+
+        const totalPages = Math.max(1, Math.ceil(passing.length / PAGE_SIZE));
+        if (currentPage > totalPages) currentPage = totalPages;
+
+        const start  = (currentPage - 1) * PAGE_SIZE;
+        const onPage = new Set(passing.slice(start, start + PAGE_SIZE));
+
+        allCards.forEach(c => c.classList.toggle('d-none', !onPage.has(c)));
+        noResults.classList.toggle('d-none', passing.length > 0);
+        renderPagination(currentPage, totalPages, passing.length);
+    }
+
+    function renderPagination(page, totalPages, total) {
+        if (!pagBar) return;
+        pagBar.innerHTML = '';
+
+        const info = document.createElement('span');
+        if (total === 0) {
+            info.textContent = 'No products';
+        } else {
+            const s = (page - 1) * PAGE_SIZE + 1;
+            const e = Math.min(page * PAGE_SIZE, total);
+            info.textContent = 'Showing ' + s + '–' + e + ' of ' + total;
+        }
+        pagBar.appendChild(info);
+
+        if (totalPages <= 1) return;
+
+        const nav = document.createElement('nav');
+        const ul  = document.createElement('ul');
+        ul.className = 'pagination pagination-sm mb-0';
+
+        function makeItem(label, target, disabled, active) {
+            const li  = document.createElement('li');
+            li.className = 'page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'page-link';
+            btn.textContent = label;
+            if (!disabled && !active) {
+                btn.addEventListener('click', () => { currentPage = target; refresh(); });
+            }
+            li.appendChild(btn);
+            return li;
+        }
+
+        ul.appendChild(makeItem('‹', page - 1, page === 1, false));
+
+        /* Compact page number list with ellipsis. */
+        const pages = [];
+        for (let i = 1; i <= totalPages; i++) {
+            if (i === 1 || i === totalPages || (i >= page - 2 && i <= page + 2)) {
+                pages.push(i);
+            } else if (pages[pages.length - 1] !== '…') {
+                pages.push('…');
+            }
+        }
+        pages.forEach(p => {
+            ul.appendChild(p === '…'
+                ? makeItem('…', null, true, false)
+                : makeItem(p, p, false, p === page));
+        });
+
+        ul.appendChild(makeItem('›', page + 1, page === totalPages, false));
+        nav.appendChild(ul);
+        pagBar.appendChild(nav);
+    }
+
+    function applySort() {
+        const [col, dir] = (sortSelect ? sortSelect.value : 'lastused:desc').split(':');
+        const asc     = dir === 'asc';
+        const numeric = ['price', 'available', 'lastused'].includes(col);
+        const cards   = getCards();
+        cards.sort((a, b) => {
+            let av = a.dataset[col] || '', bv = b.dataset[col] || '';
+            if (numeric) {
+                av = parseFloat(av) || 0;
+                bv = parseFloat(bv) || 0;
+                return asc ? av - bv : bv - av;
+            }
+            return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+        cards.forEach(c => grid.appendChild(c));
+        currentPage = 1;
+        refresh();
+    }
+
+    searchInput.addEventListener('input',  () => { currentPage = 1; refresh(); });
+    typeFilter.addEventListener('change',  () => { currentPage = 1; refresh(); });
+    vendorFilter.addEventListener('change',() => { currentPage = 1; refresh(); });
+    if (sortSelect) sortSelect.addEventListener('change', () => applySort());
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = ''; typeFilter.value = ''; vendorFilter.value = '';
+        if (sortSelect) sortSelect.value = 'lastused:desc';
+        // Reset vendor dropdown UI to "All vendors"
+        const lbl = document.getElementById('vendorDropdownLabel');
+        if (lbl) lbl.textContent = 'All vendors';
+        document.querySelectorAll('#vendorOptionsList button').forEach(b => {
+            b.classList.toggle('active', b.dataset.vendorVal === '');
+        });
+        currentPage = 1; applySort();
+    });
+
+    refresh(); /* Initial render — applies pagination to server-ordered rows. */
+}());
 </script>
 {% endblock %}

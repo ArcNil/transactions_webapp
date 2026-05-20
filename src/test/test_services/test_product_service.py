@@ -30,6 +30,7 @@ class MockProductForm:
         is_active=True,
         show_in_pos=True,
         vendor_id=None,
+        product_type="sale",
     ):
         self.name = MockField(name)
         self.unit = MockField(unit)
@@ -37,6 +38,7 @@ class MockProductForm:
         self.is_active = MockField(is_active)
         self.show_in_pos = MockField(show_in_pos)
         self.vendor_id = MockField(vendor_id)
+        self.product_type = MockField(product_type)
 
 
 class TestUpsertIngredient:
