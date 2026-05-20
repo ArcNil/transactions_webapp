@@ -509,26 +509,17 @@ def create_stock_restock(
 
 def create_product_restock(
     items_raw: str,
-    vendor_id: str,
 ) -> Transaction:
     """
     Record a stock_restock transaction where each line item is a Product
     (with ingredients).  Restocking N units of a product adds
     ingredient.quantity * N to each linked StockItem.
 
+    Vendor is derived from the first product that has a vendor linked.
     Payload format: [{product_id, quantity, unit_price}, ...]
     Payment entries are recorded separately via ledger_service.
     Raises TransactionError if the payload is invalid.
     """
-    try:
-        vid = int(vendor_id)
-    except (ValueError, TypeError):
-        raise TransactionError("A vendor must be selected.")
-
-    vendor = db.session.get(Vendor, vid)
-    if not vendor:
-        raise TransactionError("Vendor not found.")
-
     try:
         items_data = json.loads(items_raw)
     except (ValueError, TypeError):
@@ -566,10 +557,16 @@ def create_product_restock(
             "subtotal": subtotal,
         })
 
+    # Derive vendor from the first product that has one linked.
+    derived_vendor_id = next(
+        (li["product"].vendor_id for li in line_items if li["product"].vendor_id),
+        None,
+    )
+
     try:
         tx = Transaction(
             transaction_type="product_restock",
-            vendor_id=vid,
+            vendor_id=derived_vendor_id,
             total_amount=total,
         )
         db.session.add(tx)

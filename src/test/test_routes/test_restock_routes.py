@@ -22,6 +22,7 @@ def restock_product(db_session):
         price="200.00",
         stock=Decimal("0"),
         vendor_id=vendor.id,
+        product_type="purchase",
     )
     db_session.add(product)
     db_session.flush()
@@ -114,46 +115,6 @@ def test_restock_save_with_empty_cart_flashes_error(
     )
     assert response.status_code == 200
     assert b"Cart is empty." in response.data
-
-
-def test_restock_save_with_no_vendor_flashes_error(
-    logged_in_client, restock_product
-):
-    items = json.dumps(
-        [{"product_id": restock_product.id, "quantity": "1", "unit_price": "200"}]
-    )
-    response = logged_in_client.post(
-        "/restock/save",
-        data={
-            "items": items,
-            "vendor_id": "",
-            "payment_status": "full",
-            "amount_paid": "0",
-        },
-        follow_redirects=True,
-    )
-    assert response.status_code == 200
-    assert b"A vendor must be selected." in response.data
-
-
-def test_restock_save_with_unknown_vendor_flashes_error(
-    logged_in_client, restock_product
-):
-    items = json.dumps(
-        [{"product_id": restock_product.id, "quantity": "1", "unit_price": "200"}]
-    )
-    response = logged_in_client.post(
-        "/restock/save",
-        data={
-            "items": items,
-            "vendor_id": "99999",
-            "payment_status": "full",
-            "amount_paid": "0",
-        },
-        follow_redirects=True,
-    )
-    assert response.status_code == 200
-    assert b"Vendor not found." in response.data
 
 
 def test_restock_save_with_invalid_json_flashes_error(

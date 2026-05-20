@@ -306,28 +306,28 @@ class TestCreateStockRestock:
 
 class TestCreateProductRestock:
     def test_happy_path_single_product_increments_stock(
-        self, app, ingredient_product, sample_vendor, sample_stock_item, db_session
+        self, app, ingredient_product, sample_stock_item, db_session
     ):
         """1 product × 1 ingredient — stock incremented by ingredient.quantity × product_qty."""
         items = json.dumps([
             {"product_id": ingredient_product.id, "quantity": "5", "unit_price": "10.00"}
         ])
-        create_product_restock(items, str(sample_vendor.id))
+        create_product_restock(items)
 
         db_session.refresh(sample_stock_item)
         # sample_stock_item starts at 20, ingredient.quantity=2, product_qty=5 → +10
         assert sample_stock_item.quantity == Decimal("30")
 
     def test_happy_path_creates_transaction_and_item(
-        self, app, ingredient_product, sample_vendor, db_session
+        self, app, ingredient_product, db_session
     ):
         items = json.dumps([
             {"product_id": ingredient_product.id, "quantity": "3", "unit_price": "15.00"}
         ])
-        tx = create_product_restock(items, str(sample_vendor.id))
+        tx = create_product_restock(items)
 
         assert tx.transaction_type == "product_restock"
-        assert tx.vendor_id == sample_vendor.id
+        assert tx.vendor_id is None  # ingredient_product has no vendor linked
         assert len(tx.items) == 1
         item = tx.items[0]
         assert item.product_id == ingredient_product.id
@@ -337,7 +337,7 @@ class TestCreateProductRestock:
         assert tx.total_amount == Decimal("45.00")
 
     def test_multiple_ingredients_on_one_product_all_incremented(
-        self, app, sample_vendor, db_session
+        self, app, db_session
     ):
         product = Product(name="Mixed Item", unit="unit", price="20.00", stock=Decimal("0"))
         stock_a = StockItem(name="Component A", unit="L", quantity=Decimal("100"))
@@ -355,7 +355,7 @@ class TestCreateProductRestock:
         db_session.commit()
 
         items = json.dumps([{"product_id": product.id, "quantity": "4", "unit_price": "20.00"}])
-        create_product_restock(items, str(sample_vendor.id))
+        create_product_restock(items)
 
         db_session.refresh(stock_a)
         db_session.refresh(stock_b)
@@ -363,7 +363,7 @@ class TestCreateProductRestock:
         assert stock_b.quantity == Decimal("54")   # 50 + 1 * 4
 
     def test_multiple_products_in_cart_both_processed(
-        self, app, sample_vendor, db_session
+        self, app, db_session
     ):
         stock_a = StockItem(name="Raw A", unit="L", quantity=Decimal("0"))
         stock_b = StockItem(name="Raw B", unit="L", quantity=Decimal("0"))
@@ -385,7 +385,7 @@ class TestCreateProductRestock:
             {"product_id": product_a.id, "quantity": "3", "unit_price": "10.00"},
             {"product_id": product_b.id, "quantity": "2", "unit_price": "20.00"},
         ])
-        tx = create_product_restock(items, str(sample_vendor.id))
+        tx = create_product_restock(items)
 
         db_session.refresh(stock_a)
         db_session.refresh(stock_b)
@@ -395,102 +395,86 @@ class TestCreateProductRestock:
         assert tx.total_amount == Decimal("70.00")  # 3*10 + 2*20
 
     def test_product_without_ingredients_records_transaction_only(
-        self, app, sample_product, sample_vendor, db_session
+        self, app, sample_product, db_session
     ):
         """A product with no ingredient mappings is valid; it records the transaction
         but does not increment any raw stock (e.g. a service fee or one-off charge)."""
         items = json.dumps([
             {"product_id": sample_product.id, "quantity": "1", "unit_price": "5.00"}
         ])
-        tx = create_product_restock(items, str(sample_vendor.id))
+        tx = create_product_restock(items)
         assert tx is not None
         assert tx.transaction_type == "product_restock"
         assert tx.total_amount == Decimal("5.00")
         assert len(tx.items) == 1
         assert tx.items[0].product_id == sample_product.id
 
-    def test_product_not_found_raises_transaction_error(
-        self, app, sample_vendor
-    ):
+    def test_product_not_found_raises_transaction_error(self, app):
         items = json.dumps([{"product_id": 99999, "quantity": "1", "unit_price": "5.00"}])
         with pytest.raises(TransactionError, match="not found"):
-            create_product_restock(items, str(sample_vendor.id))
+            create_product_restock(items)
 
-    def test_invalid_vendor_id_string_raises_transaction_error(
-        self, app, ingredient_product
+    def test_vendor_derived_from_product_vendor(
+        self, app, ingredient_product, sample_vendor, db_session
     ):
+        """Transaction vendor_id is set from the first product that has a vendor."""
+        ingredient_product.vendor_id = sample_vendor.id
+        db_session.commit()
+
         items = json.dumps([
             {"product_id": ingredient_product.id, "quantity": "1", "unit_price": "5.00"}
         ])
-        with pytest.raises(TransactionError, match="vendor"):
-            create_product_restock(items, "not-an-int")
+        tx = create_product_restock(items)
+        assert tx.vendor_id == sample_vendor.id
 
-    def test_missing_vendor_id_raises_transaction_error(
-        self, app, ingredient_product
+    def test_vendor_is_none_when_no_product_has_a_vendor(
+        self, app, ingredient_product, db_session
     ):
+        """If no product in the cart has a vendor, transaction vendor_id is None."""
         items = json.dumps([
             {"product_id": ingredient_product.id, "quantity": "1", "unit_price": "5.00"}
         ])
-        with pytest.raises(TransactionError, match="vendor"):
-            create_product_restock(items, "")
+        tx = create_product_restock(items)
+        assert tx.vendor_id is None
 
-    def test_vendor_not_found_raises_transaction_error(
-        self, app, ingredient_product
-    ):
-        items = json.dumps([
-            {"product_id": ingredient_product.id, "quantity": "1", "unit_price": "5.00"}
-        ])
-        with pytest.raises(TransactionError, match="Vendor not found"):
-            create_product_restock(items, "99999")
-
-    def test_empty_cart_raises_transaction_error(
-        self, app, sample_vendor
-    ):
+    def test_empty_cart_raises_transaction_error(self, app):
         with pytest.raises(TransactionError, match="Cart is empty"):
-            create_product_restock(json.dumps([]), str(sample_vendor.id))
+            create_product_restock(json.dumps([]))
 
-    def test_invalid_json_raises_transaction_error(
-        self, app, sample_vendor
-    ):
+    def test_invalid_json_raises_transaction_error(self, app):
         with pytest.raises(TransactionError, match="Invalid cart data"):
-            create_product_restock("not-json", str(sample_vendor.id))
+            create_product_restock("not-json")
 
-    def test_zero_quantity_raises_transaction_error(
-        self, app, ingredient_product, sample_vendor
-    ):
+    def test_zero_quantity_raises_transaction_error(self, app, ingredient_product):
         items = json.dumps([
             {"product_id": ingredient_product.id, "quantity": "0", "unit_price": "5.00"}
         ])
         with pytest.raises(TransactionError, match="Quantity"):
-            create_product_restock(items, str(sample_vendor.id))
+            create_product_restock(items)
 
-    def test_negative_quantity_raises_transaction_error(
-        self, app, ingredient_product, sample_vendor
-    ):
+    def test_negative_quantity_raises_transaction_error(self, app, ingredient_product):
         items = json.dumps([
             {"product_id": ingredient_product.id, "quantity": "-1", "unit_price": "5.00"}
         ])
         with pytest.raises(TransactionError, match="Quantity"):
-            create_product_restock(items, str(sample_vendor.id))
+            create_product_restock(items)
 
-    def test_negative_unit_price_raises_transaction_error(
-        self, app, ingredient_product, sample_vendor
-    ):
+    def test_negative_unit_price_raises_transaction_error(self, app, ingredient_product):
         items = json.dumps([
             {"product_id": ingredient_product.id, "quantity": "1", "unit_price": "-0.01"}
         ])
         with pytest.raises(TransactionError, match="price"):
-            create_product_restock(items, str(sample_vendor.id))
+            create_product_restock(items)
 
     def test_db_commit_failure_rollbacks_and_reraises(
-        self, app, ingredient_product, sample_vendor, db_session
+        self, app, ingredient_product, db_session
     ):
         items = json.dumps([
             {"product_id": ingredient_product.id, "quantity": "5", "unit_price": "10.00"}
         ])
         with patch.object(_db.session, "commit", side_effect=Exception("DB error")):
             with pytest.raises(Exception, match="DB error"):
-                create_product_restock(items, str(sample_vendor.id))
+                create_product_restock(items)
 
         # Rollback must have cleared the flush — no transaction row persisted
         assert (

@@ -158,6 +158,76 @@ def test_products_toggle_pos_hides_product_from_pos(logged_in_client, sample_pro
     assert sample_product.show_in_pos is False
 
 
+# ---------------------------------------------------------------------------
+# BACK-002: hide deactivated products / show-inactive toggle
+# ---------------------------------------------------------------------------
+
+
+def test_products_index_hides_inactive_product_by_default(logged_in_client, db_session):
+    product = Product(name="Discontinued Gallon", unit="gallon", price="10.00", is_active=False)
+    db_session.add(product)
+    db_session.commit()
+
+    response = logged_in_client.get("/products/")
+    assert response.status_code == 200
+    assert b"Discontinued Gallon" not in response.data
+
+
+def test_products_index_shows_active_product_by_default(logged_in_client, sample_product):
+    response = logged_in_client.get("/products/")
+    assert response.status_code == 200
+    assert b"Water Gallon" in response.data
+
+
+def test_products_index_show_inactive_1_reveals_inactive_product(logged_in_client, db_session):
+    product = Product(name="Retired Bottle", unit="bottle", price="5.00", is_active=False)
+    db_session.add(product)
+    db_session.commit()
+
+    response = logged_in_client.get("/products/?show_inactive=1")
+    assert response.status_code == 200
+    assert b"Retired Bottle" in response.data
+
+
+def test_products_index_show_inactive_0_hides_inactive_product(logged_in_client, db_session):
+    product = Product(name="Old Container", unit="container", price="8.00", is_active=False)
+    db_session.add(product)
+    db_session.commit()
+
+    response = logged_in_client.get("/products/?show_inactive=0")
+    assert response.status_code == 200
+    assert b"Old Container" not in response.data
+
+
+def test_products_index_show_inactive_arbitrary_value_hides_inactive_product(logged_in_client, db_session):
+    product = Product(name="Legacy Jug", unit="jug", price="12.00", is_active=False)
+    db_session.add(product)
+    db_session.commit()
+
+    response = logged_in_client.get("/products/?show_inactive=yes")
+    assert response.status_code == 200
+    assert b"Legacy Jug" not in response.data
+
+
+def test_products_index_shows_toggle_button_when_inactive_products_exist(logged_in_client, db_session):
+    product = Product(name="Deactivated Item", unit="gallon", price="20.00", is_active=False)
+    db_session.add(product)
+    db_session.commit()
+
+    response = logged_in_client.get("/products/")
+    assert response.status_code == 200
+    assert b"show_inactive=1" in response.data
+
+
+def test_products_index_hides_toggle_button_when_no_inactive_products_exist(
+    logged_in_client, sample_product
+):
+    # sample_product is active; no inactive products exist in this test's db.
+    response = logged_in_client.get("/products/")
+    assert response.status_code == 200
+    assert b"show_inactive=1" not in response.data
+
+
 def test_products_ingredient_add_with_invalid_quantity_flashes_danger(
     logged_in_client, sample_product, db_session
 ):
