@@ -6,7 +6,7 @@ from sqlalchemy.orm import joinedload
 
 from app import db
 from app.models.product import Product
-from app.models.stock import StockItem, ProductIngredient
+from app.models.stock import StockItem, ProductIngredient, ProductYield
 from app.models.vendor import Vendor
 from app.utils.monitor import record_action
 
@@ -265,4 +265,100 @@ def delete_ingredient(
         db.session.rollback()
         raise
     record_action(user_id, username, "product.ingredient_removed", product_name)
+    return product_name, stock_name
+
+
+def upsert_yield(
+    product,
+    stock_item_id: int | str,
+    qty_str: str,
+    user_id: int,
+    username: str,
+) -> tuple[str, str]:
+    """
+    Add or update a product yield mapping.
+
+    A yield defines how much of a raw stock item is added per 1 unit of a
+    purchase product when it is restocked. Only valid for purchase-type products.
+
+    Returns a (flash_message, category) tuple on success.
+    Raises ProductError for invalid input, wrong product type, or missing stock item.
+    """
+    if product.product_type != "purchase":
+        raise ProductError("Yield mappings are only valid for purchase-type products.")
+
+    try:
+        stock_item_id_int = int(stock_item_id)
+        qty = Decimal(qty_str)
+    except (ValueError, InvalidOperation):
+        raise ProductError("Invalid yield data.")
+
+    if qty <= 0:
+        raise ProductError("Quantity must be greater than 0.")
+
+    stock_item = db.session.get(StockItem, stock_item_id_int)
+    if not stock_item:
+        raise ProductError("Stock item not found.")
+
+    existing = ProductYield.query.filter_by(
+        product_id=product.id, stock_item_id=stock_item.id
+    ).first()
+
+    if existing:
+        existing.quantity = qty
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+        record_action(user_id, username, "product.yield_updated", product.name)
+        return (
+            f'Updated yield: "{stock_item.name}" for "{product.name}".',
+            "success",
+        )
+
+    product_yield = ProductYield(
+        product_id=product.id,
+        stock_item_id=stock_item.id,
+        quantity=qty,
+    )
+    db.session.add(product_yield)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    record_action(user_id, username, "product.yield_added", product.name)
+    return (
+        f'Added yield: 1 {product.unit} of "{product.name}" adds {qty} {stock_item.unit}(s) of "{stock_item.name}".',
+        "success",
+    )
+
+
+def delete_yield(
+    product_id: int,
+    yield_id: int,
+    user_id: int,
+    username: str,
+) -> tuple[str, str]:
+    """
+    Remove a ProductYield row.
+
+    Returns a (product_name, stock_name) tuple on success.
+    Raises ProductError if the yield does not belong to the product.
+    """
+    product_yield = ProductYield.query.filter_by(
+        id=yield_id, product_id=product_id
+    ).first()
+    if product_yield is None:
+        raise ProductError("Yield mapping not found.")
+    product_name = product_yield.product.name
+    stock_name = product_yield.stock_item.name
+    db.session.delete(product_yield)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    record_action(user_id, username, "product.yield_removed", product_name)
     return product_name, stock_name

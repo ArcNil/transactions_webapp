@@ -11,11 +11,13 @@ from app.services.product_service import (
     get_all_stock_items,
     get_all_vendors,
     upsert_ingredient,
+    upsert_yield,
     add_product,
     edit_product,
     deactivate_product,
     toggle_pos as service_toggle_pos,
     delete_ingredient,
+    delete_yield,
     ProductError,
 )
 
@@ -83,6 +85,21 @@ def index():
         for p in products
     }
 
+    # Pre-serialize yields per purchase product for safe JS consumption
+    yields_by_product = {
+        p.id: [
+            {
+                "id": y.id,
+                "stock_item_name": y.stock_item.name,
+                "stock_item_unit": y.stock_item.unit,
+                "quantity": str(y.quantity),
+            }
+            for y in p.yields
+        ]
+        for p in products
+        if p.product_type == "purchase"
+    }
+
     return render_template(
         "products/index.html",
         products=products,
@@ -90,6 +107,7 @@ def index():
         stock_items=stock_items,
         vendors=vendors,
         ingredients_by_product=ingredients_by_product,
+        yields_by_product=yields_by_product,
         form=form,
         show_inactive=show_inactive,
         inactive_count=inactive_count,
@@ -196,4 +214,35 @@ def ingredient_delete(product_id, ingredient_id):
     except ProductError:
         abort(404)
     flash(f'Removed "{stock_name}" from "{product_name}" ingredients.', "success")
+    return redirect(url_for("products.index"))
+
+
+@bp.route("/<int:product_id>/yields/add", methods=["POST"])
+@login_required
+def yield_add(product_id):
+    product = db.get_or_404(Product, product_id)
+    try:
+        msg, category = upsert_yield(
+            product,
+            request.form.get("stock_item_id", "0"),
+            request.form.get("quantity", "0"),
+            current_user.id,
+            current_user.username,
+        )
+        flash(msg, category)
+    except ProductError as e:
+        flash(str(e), "danger")
+    return redirect(url_for("products.index"))
+
+
+@bp.route("/<int:product_id>/yields/<int:yield_id>/delete", methods=["POST"])
+@login_required
+def yield_delete(product_id, yield_id):
+    try:
+        product_name, stock_name = delete_yield(
+            product_id, yield_id, current_user.id, current_user.username
+        )
+    except ProductError:
+        abort(404)
+    flash(f'Removed "{stock_name}" yield from "{product_name}".', "success")
     return redirect(url_for("products.index"))

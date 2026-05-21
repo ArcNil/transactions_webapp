@@ -33,7 +33,7 @@ def test_stock_index_redirects_to_login_if_anonymous(client):
 def test_stock_add_creates_new_stock_item(logged_in_client, db_session):
     response = logged_in_client.post(
         "/stock/add",
-        data={"name": "Rock Salt", "unit": "kg", "vendor_id": 0},
+        data={"name": "Rock Salt", "unit": "kg"},
         follow_redirects=True,
     )
     assert response.status_code == 200
@@ -42,7 +42,6 @@ def test_stock_add_creates_new_stock_item(logged_in_client, db_session):
     item = StockItem.query.filter_by(name="Rock Salt").first()
     assert item is not None
     assert item.unit == "kg"
-    assert item.vendor_id is None
 
 
 def test_stock_add_with_missing_name_flashes_error(logged_in_client, db_session):

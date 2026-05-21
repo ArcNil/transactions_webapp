@@ -27,4 +27,6 @@ echo "==> Seeding default user..."
 flask seed
 
 echo "==> Starting server..."
-exec gunicorn --bind 0.0.0.0:5000 --workers 2 --worker-tmp-dir /dev/shm main:app
+# worker class, psycogreen patch, and worker-connections are declared in gunicorn.conf.py
+# --worker-connections 100: conservative cap (default 1000) — 2 workers × 100 = 200 concurrent greenlets max
+exec gunicorn --bind 0.0.0.0:5000 --workers 2 --worker-connections 100 --worker-tmp-dir /dev/shm -c /app/gunicorn.conf.py main:app

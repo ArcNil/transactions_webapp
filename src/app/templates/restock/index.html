@@ -16,6 +16,8 @@
     .product-btn .p-name  { font-weight: 600; font-size: .9rem; color: #0f172a; }
     .product-btn .p-price { font-size: .78rem; color: #0284c7; font-weight: 500; margin-top: 2px; }
     .product-btn .p-stock { font-size: .7rem; color: #94a3b8; }
+    .product-btn .p-yields { display: flex; flex-direction: column; gap: 1px; }
+    .product-btn .p-yield-line { font-size: .65rem; color: #16a34a; display: block; }
 
     /* Cart */
     .cart-item {
@@ -96,6 +98,17 @@
                             <div class="p-price">{{ p.unit }} · ₱{{ p.price }}</div>
                             {% if p.vendor %}
                             <div class="p-stock"><i class="bi bi-truck me-1"></i>{{ p.vendor.name }}</div>
+                            {% endif %}
+                            {% set product_yields = yields_by_product.get(p.id, []) %}
+                            {% if product_yields %}
+                            <div class="p-yields mt-1">
+                                {% for y in product_yields %}
+                                <span class="p-yield-line">
+                                    <i class="bi bi-box-arrow-in-up"></i>
+                                    +{{ y.quantity }} {{ y.stock_item_unit }} {{ y.stock_item_name }}
+                                </span>
+                                {% endfor %}
+                            </div>
                             {% endif %}
                         </button>
                     </div>

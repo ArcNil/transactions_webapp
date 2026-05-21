@@ -23,13 +23,6 @@ class TestStockItem:
 
         assert item.quantity == Decimal("0")
 
-    def test_vendor_id_is_nullable(self, db_session):
-        item = StockItem(name="Sugar", unit="kg", vendor_id=None)
-        db_session.add(item)
-        db_session.commit()
-
-        assert item.vendor_id is None
-
     def test_created_at_is_set_automatically(self, db_session):
         item = StockItem(name="Citric Acid", unit="g")
         db_session.add(item)

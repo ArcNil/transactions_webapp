@@ -26,7 +26,10 @@
                     <h6 class="card-title fw-bold mb-0">{{ item.name }}</h6>
                     <div>
                         <button class="btn btn-sm btn-light me-1"
-                                onclick="openEditModal({{ item.id }}, '{{ item.name|e }}', '{{ item.unit|e }}', {{ item.vendor_id or 0 }})">
+                                data-item-id="{{ item.id }}"
+                                data-item-name="{{ item.name }}"
+                                data-item-unit="{{ item.unit }}"
+                                onclick="openEditModal(this)">
                             <i class="bi bi-pencil"></i>
                         </button>
                         <button class="btn btn-sm btn-light text-danger"
@@ -37,7 +40,6 @@
                 </div>
                 <p class="text-muted small mb-2">
                     {{ item.unit }}
-                    {% if item.vendor %} · {{ item.vendor.name }}{% endif %}
                 </p>
                 <div class="d-flex align-items-center gap-2 mb-2">
                     <span class="fs-5 fw-bold">{{ item.quantity | float | round(4) }}</span>
@@ -96,10 +98,6 @@
                         {{ form.unit.label(class="form-label fw-semibold small") }}
                         {{ form.unit(class="form-control", placeholder="e.g. liter, kg, piece") }}
                     </div>
-                    <div class="mb-2">
-                        {{ form.vendor_id.label(class="form-label fw-semibold small") }}
-                        {{ form.vendor_id(class="form-select") }}
-                    </div>
                 </div>
                 <div class="modal-footer border-0">
                     <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
@@ -143,12 +141,14 @@ function openAddModal() {
     document.getElementById('stockForm').reset();
 }
 
-function openEditModal(id, name, unit, vendorId) {
+function openEditModal(btn) {
+    const id   = btn.dataset.itemId;
+    const name = btn.dataset.itemName;
+    const unit = btn.dataset.itemUnit;
     document.getElementById('stockModalTitle').textContent = 'Edit Stock Item';
     document.getElementById('stockForm').action = '/stock/' + id + '/edit';
     document.getElementById('stockForm').querySelector('[name=name]').value = name;
     document.getElementById('stockForm').querySelector('[name=unit]').value = unit;
-    document.getElementById('stockForm').querySelector('[name=vendor_id]').value = vendorId;
     const modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('stockModal'));
     modal.show();
 }

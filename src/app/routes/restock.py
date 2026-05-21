@@ -3,7 +3,9 @@ import logging
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from decimal import Decimal, InvalidOperation
+from sqlalchemy.orm import selectinload
 from app.models.product import Product
+from app.models.stock import ProductYield
 from app.services.transaction_service import create_product_restock, TransactionError
 from app.services.ledger_service import add_entry, LedgerError
 from app.utils.monitor import record_action
@@ -20,6 +22,7 @@ def index():
     products = (
         Product.query
         .filter(Product.product_type == "purchase", Product.vendor_id.isnot(None))
+        .options(selectinload(Product.yields).selectinload(ProductYield.stock_item))
         .order_by(Product.name)
         .all()
     )
@@ -28,10 +31,22 @@ def index():
         .filter(Product.product_type == "purchase", Product.vendor_id.is_(None))
         .count()
     )
+    yields_by_product = {
+        p.id: [
+            {
+                "stock_item_name": y.stock_item.name,
+                "stock_item_unit": y.stock_item.unit,
+                "quantity": str(y.quantity),
+            }
+            for y in p.yields
+        ]
+        for p in products
+    }
     return render_template(
         "restock/index.html",
         products=products,
         no_vendor_count=no_vendor_count,
+        yields_by_product=yields_by_product,
     )
 
 

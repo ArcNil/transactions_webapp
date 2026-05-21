@@ -11,4 +11,3 @@ class Vendor(db.Model):
 
     products = db.relationship("Product", back_populates="vendor")
     transactions = db.relationship("Transaction", back_populates="vendor")
-    stock_items = db.relationship("StockItem", back_populates="vendor")

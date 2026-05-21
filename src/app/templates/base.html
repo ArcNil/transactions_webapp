@@ -234,6 +234,10 @@
            class="nav-link {% if request.blueprint == 'settings' %}active{% endif %}">
             <i class="bi bi-gear"></i> Settings
         </a>
+        <a href="{{ url_for('manual.index') }}"
+           class="nav-link {% if request.blueprint == 'manual' %}active{% endif %}">
+            <i class="bi bi-book"></i> User Manual
+        </a>
         {% if current_user.is_superadmin %}
         <a href="{{ url_for('monitoring.index') }}"
            class="nav-link {% if request.blueprint == 'monitoring' %}active{% endif %}">
@@ -262,6 +266,29 @@
         {% endfor %}
     {% endwith %}
 </div>
+
+<!-- First-time welcome banner -->
+<div id="welcome-banner" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:1050; background:var(--primary); color:#fff; padding:.6rem 1.25rem; align-items:center; justify-content:space-between; gap:1rem; flex-wrap:wrap;">
+    <span class="small"><i class="bi bi-rocket-takeoff me-2"></i><strong>First time here?</strong> Follow our step-by-step <a href="{{ url_for('manual.index') }}#getting-started" class="text-white fw-semibold">Getting Started guide</a> to set up your app.</span>
+    <button type="button" id="welcome-dismiss" class="btn btn-sm btn-light py-0 px-2" style="font-size:.8rem;">Dismiss</button>
+</div>
+<script>
+(function () {
+    var banner = document.getElementById('welcome-banner');
+    var dismiss = document.getElementById('welcome-dismiss');
+    if (!localStorage.getItem('h2o-guide-dismissed')) {
+        banner.style.display = 'flex';
+        // On mobile, sit above the bottom nav
+        if (window.innerWidth < 992) {
+            banner.style.bottom = 'var(--bottom-nav-h)';
+        }
+    }
+    dismiss.addEventListener('click', function () {
+        localStorage.setItem('h2o-guide-dismissed', '1');
+        banner.style.display = 'none';
+    });
+})();
+</script>
 
 <!-- Page content -->
 <main class="p-3 p-lg-4">
@@ -305,6 +332,10 @@
     <a href="{{ url_for('settings.index') }}"
        class="{% if request.blueprint == 'settings' %}active{% endif %}">
         <i class="bi bi-gear"></i><span>Settings</span>
+    </a>
+    <a href="{{ url_for('manual.index') }}"
+       class="{% if request.blueprint == 'manual' %}active{% endif %}">
+        <i class="bi bi-book"></i><span>Manual</span>
     </a>
     {% if current_user.is_superadmin %}
     <a href="{{ url_for('monitoring.index') }}"

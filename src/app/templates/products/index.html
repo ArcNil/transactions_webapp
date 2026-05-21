@@ -236,6 +236,16 @@
                                 <i class="bi bi-ui-checks small"></i>
                             </button>
                             {% endif %}
+                            {% if p.product_type == 'purchase' %}
+                            <button class="btn btn-sm btn-light px-1 py-0"
+                                    title="Manage raw stock yields"
+                                    data-product-id="{{ p.id }}"
+                                    data-product-name="{{ p.name }}"
+                                    data-yields="{{ yields_by_product.get(p.id, []) | tojson | forceescape }}"
+                                    onclick="openYieldsModal(this)">
+                                <i class="bi bi-box-arrow-in-up small"></i>
+                            </button>
+                            {% endif %}
                             <button class="btn btn-sm btn-light px-1 py-0"
                                     title="Edit"
                                     data-product-id="{{ p.id }}"
@@ -248,6 +258,7 @@
                                     data-vendor-id="{{ p.vendor_id or '' }}"
                                     data-has-photo="{{ 'true' if p.photo_data else 'false' }}"
                                     data-ingredients="{{ ingredients_by_product[p.id] | tojson | forceescape }}"
+                                    data-yields="{{ yields_by_product.get(p.id, []) | tojson | forceescape }}"
                                     onclick="openEditModal(this)">
                                 <i class="bi bi-pencil small"></i>
                             </button>
@@ -362,10 +373,10 @@
                 </div>
             </form>
 
-            <!-- Raw stock / ingredients section — only visible when editing an existing product -->
+            <!-- Ingredients section — only visible when editing a sale product -->
             <div id="editIngredientsSection" class="px-4 pb-4 d-none">
                 <hr class="mt-0 mb-3">
-                <div class="small fw-semibold text-muted text-uppercase mb-2">Raw Stock Used Per Unit</div>
+                <div class="small fw-semibold text-muted text-uppercase mb-2">Raw Stock Used Per Unit Sold</div>
 
                 <div id="editIngList" class="mb-3"></div>
 
@@ -393,6 +404,84 @@
                         </div>
                     </div>
                 </form>
+            </div>
+
+            <!-- Yields section — only visible when editing a purchase product -->
+            <div id="editYieldsSection" class="px-4 pb-4 d-none">
+                <hr class="mt-0 mb-3">
+                <div class="small fw-semibold text-muted text-uppercase mb-2">Raw Stock Added Per Unit Restocked</div>
+
+                <div id="editYieldList" class="mb-3"></div>
+
+                <form id="editYieldAddForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-6">
+                            <label class="form-label small mb-1">Stock Item</label>
+                            <select name="stock_item_id" class="form-select form-select-sm" required>
+                                <option value="">— Select —</option>
+                                {% for si in stock_items %}
+                                <option value="{{ si.id }}">{{ si.name }} ({{ si.unit }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small mb-1">Qty added per unit</label>
+                            <input type="number" name="quantity" class="form-control form-control-sm"
+                                   step="0.0001" min="0.0001" placeholder="e.g. 5" required>
+                        </div>
+                        <div class="col-2">
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-plus-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Yields modal -->
+<div class="modal fade" id="yieldsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold">Raw Stock Yields — <span id="yieldProductName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body pt-0">
+                <p class="text-muted small mb-3">Defines how much raw stock is added per unit when this product is restocked.</p>
+                <div id="yieldList" class="mb-3"></div>
+
+                <form id="yieldAddForm" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="small fw-semibold text-muted text-uppercase mb-2">Add Yield</div>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-6">
+                            <label class="form-label small">Stock Item</label>
+                            <select name="stock_item_id" class="form-select form-select-sm" required>
+                                <option value="">— Select —</option>
+                                {% for si in stock_items %}
+                                <option value="{{ si.id }}">{{ si.name }} ({{ si.unit }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label small">Qty per unit</label>
+                            <input type="number" name="quantity" class="form-control form-control-sm"
+                                   step="0.0001" min="0.0001" placeholder="e.g. 5" required>
+                        </div>
+                        <div class="col-2">
+                            <button type="submit" class="btn btn-primary btn-sm w-100">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>
@@ -582,14 +671,20 @@ function openAddModal() {
 }
 
 document.getElementById('productTypeSelect').addEventListener('change', function () {
-    // Only toggle the ingredients section when editing an existing product.
+    // Only toggle the sections when editing an existing product.
     const isEditing = document.getElementById('productModalTitle').textContent === 'Edit Product';
     if (!isEditing) return;
-    const section = document.getElementById('editIngredientsSection');
+    const ingSection   = document.getElementById('editIngredientsSection');
+    const yieldSection = document.getElementById('editYieldsSection');
     if (this.value === 'sale') {
-        section.classList.remove('d-none');
+        ingSection.classList.remove('d-none');
+        yieldSection.classList.add('d-none');
+    } else if (this.value === 'purchase') {
+        ingSection.classList.add('d-none');
+        yieldSection.classList.remove('d-none');
     } else {
-        section.classList.add('d-none');
+        ingSection.classList.add('d-none');
+        yieldSection.classList.add('d-none');
     }
 });
 
@@ -603,6 +698,7 @@ function openEditModal(btn) {
     const productType = btn.dataset.productType || 'sale';
     const hasPhoto    = btn.dataset.hasPhoto === 'true';
     const ingredients = JSON.parse(btn.dataset.ingredients || '[]');
+    const yields      = JSON.parse(btn.dataset.yields || '[]');
 
     document.getElementById('productModalTitle').textContent = 'Edit Product';
     document.getElementById('productForm').action = editBaseUrl + id + '/edit';
@@ -631,15 +727,22 @@ function openEditModal(btn) {
     const photoInput = f.querySelector('[name=photo]');
     if (photoInput) photoInput.value = '';
 
-    // Always wire the ingredient form so it's correct if the user switches type mid-edit
-    document.getElementById('editIngAddForm').action = editBaseUrl + id + '/ingredients/add';
-    buildIngredientList(document.getElementById('editIngList'), id, ingredients);
+    const ingSection   = document.getElementById('editIngredientsSection');
+    const yieldSection = document.getElementById('editYieldsSection');
 
-    // Show the ingredients section only for sale products
     if (productType === 'sale') {
-        document.getElementById('editIngredientsSection').classList.remove('d-none');
+        document.getElementById('editIngAddForm').action = editBaseUrl + id + '/ingredients/add';
+        buildIngredientList(document.getElementById('editIngList'), id, ingredients);
+        ingSection.classList.remove('d-none');
+        yieldSection.classList.add('d-none');
+    } else if (productType === 'purchase') {
+        document.getElementById('editYieldAddForm').action = editBaseUrl + id + '/yields/add';
+        buildYieldList(document.getElementById('editYieldList'), id, yields);
+        ingSection.classList.add('d-none');
+        yieldSection.classList.remove('d-none');
     } else {
-        document.getElementById('editIngredientsSection').classList.add('d-none');
+        ingSection.classList.add('d-none');
+        yieldSection.classList.add('d-none');
     }
 
     bootstrap.Modal.getOrCreateInstance(document.getElementById('productModal')).show();
@@ -651,6 +754,65 @@ function openDeleteModal(btn) {
     document.getElementById('deleteProductName').textContent = name;
     document.getElementById('deleteForm').action = '/products/' + id + '/delete';
     bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteModal')).show();
+}
+
+/**
+ * Build yield list rows using DOM methods (no innerHTML with user data → no XSS).
+ */
+function buildYieldList(container, productId, yields) {
+    container.textContent = '';
+    if (!yields || yields.length === 0) {
+        const p = document.createElement('p');
+        p.className = 'text-muted small fst-italic mb-2';
+        p.textContent = 'No yields defined yet.';
+        container.appendChild(p);
+        return;
+    }
+    yields.forEach(y => {
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-center justify-content-between py-1 border-bottom';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'small';
+        const icon = document.createElement('i');
+        icon.className = 'bi bi-box-arrow-in-up me-1 text-muted';
+        nameSpan.appendChild(icon);
+        nameSpan.appendChild(document.createTextNode(
+            y.stock_item_name + ' +' + y.quantity + ' ' + y.stock_item_unit
+        ));
+
+        const deleteForm = document.createElement('form');
+        deleteForm.method = 'POST';
+        deleteForm.action = '/products/' + productId + '/yields/' + y.id + '/delete';
+        deleteForm.className = 'd-inline';
+        const csrfInput = document.createElement('input');
+        csrfInput.type = 'hidden';
+        csrfInput.name = 'csrf_token';
+        csrfInput.value = csrfToken;
+        const delBtn = document.createElement('button');
+        delBtn.type = 'submit';
+        delBtn.className = 'btn btn-sm p-0 text-danger ms-2';
+        const trashIcon = document.createElement('i');
+        trashIcon.className = 'bi bi-trash3';
+        delBtn.appendChild(trashIcon);
+        deleteForm.appendChild(csrfInput);
+        deleteForm.appendChild(delBtn);
+
+        row.appendChild(nameSpan);
+        row.appendChild(deleteForm);
+        container.appendChild(row);
+    });
+}
+
+function openYieldsModal(btn) {
+    const productId   = btn.dataset.productId;
+    const productName = btn.dataset.productName;
+    const yields      = JSON.parse(btn.dataset.yields || '[]');
+
+    document.getElementById('yieldProductName').textContent = productName;
+    document.getElementById('yieldAddForm').action = '/products/' + productId + '/yields/add';
+    buildYieldList(document.getElementById('yieldList'), productId, yields);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('yieldsModal')).show();
 }
 
 function openIngredientsModal(btn) {
