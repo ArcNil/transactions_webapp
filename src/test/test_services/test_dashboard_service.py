@@ -1,9 +1,16 @@
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import pytest
 
 from app.models.transaction import Transaction, TransactionLedgerEntry
-from app.services.dashboard_service import get_chart_data, get_recent_transactions, get_stats
+from app.services.dashboard_service import (
+    get_chart_data,
+    get_expense_transactions,
+    get_financial_summary,
+    get_recent_transactions,
+    get_stats,
+)
 
 
 class TestGetStats:
@@ -148,3 +155,61 @@ class TestGetChartData:
         result = get_chart_data()
 
         assert result["revenue"][-1] == 150.0
+
+
+class TestGetFinancialSummary:
+    def test_product_restock_counted_as_expense(self, app, db_session):
+        tx = Transaction(transaction_type="product_restock", total_amount="50.00")
+        db_session.add(tx)
+        db_session.commit()
+        db_session.add(
+            TransactionLedgerEntry(transaction_id=tx.id, entry_type="payment", amount="50.00")
+        )
+        db_session.commit()
+
+        result = get_financial_summary()
+
+        assert result["expenses"] > 0
+        assert result["net"] < 0
+
+    def test_financial_summary_net_is_revenue_minus_expenses(self, app, db_session):
+        sale_tx = Transaction(transaction_type="sale", total_amount="100.00")
+        restock_tx = Transaction(transaction_type="product_restock", total_amount="40.00")
+        db_session.add_all([sale_tx, restock_tx])
+        db_session.commit()
+        db_session.add_all([
+            TransactionLedgerEntry(transaction_id=sale_tx.id, entry_type="payment", amount="100.00"),
+            TransactionLedgerEntry(transaction_id=restock_tx.id, entry_type="payment", amount="40.00"),
+        ])
+        db_session.commit()
+
+        result = get_financial_summary()
+
+        assert result["revenue"] == 100.0
+        assert result["expenses"] == 40.0
+        assert result["net"] == 60.0
+
+
+class TestGetExpenseTransactions:
+    def test_includes_all_expense_types(self, app, db_session):
+        restock_tx = Transaction(transaction_type="restock", total_amount="10.00")
+        stock_restock_tx = Transaction(transaction_type="stock_restock", total_amount="20.00")
+        product_restock_tx = Transaction(transaction_type="product_restock", total_amount="30.00")
+        db_session.add_all([restock_tx, stock_restock_tx, product_restock_tx])
+        db_session.commit()
+
+        results = get_expense_transactions()
+        result_ids = {tx.id for tx in results}
+
+        assert restock_tx.id in result_ids
+        assert stock_restock_tx.id in result_ids
+        assert product_restock_tx.id in result_ids
+
+    def test_excludes_sales(self, app, db_session):
+        sale_tx = Transaction(transaction_type="sale", total_amount="99.00")
+        db_session.add(sale_tx)
+        db_session.commit()
+
+        results = get_expense_transactions()
+
+        assert results == []

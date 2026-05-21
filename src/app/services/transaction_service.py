@@ -511,11 +511,12 @@ def create_product_restock(
     items_raw: str,
 ) -> Transaction:
     """
-    Record a stock_restock transaction where each line item is a Product
-    (with ingredients).  Restocking N units of a product adds
-    ingredient.quantity * N to each linked StockItem.
+    Record a product_restock transaction. For each line item:
+    - If the product has ingredients, each linked StockItem is incremented by
+      ingredient.quantity * N (fan-out to raw stock).
+    - If the product has no ingredients, product.stock is incremented by N directly.
 
-    Vendor is derived from the first product that has a vendor linked.
+    Vendor is derived from the products (all must share the same vendor).
     Payload format: [{product_id, quantity, unit_price}, ...]
     Payment entries are recorded separately via ledger_service.
     Raises TransactionError if the payload is invalid.
@@ -545,8 +546,8 @@ def create_product_restock(
         product = db.session.get(Product, product_id)
         if not product:
             raise TransactionError(f"Product #{product_id} not found.")
-        # Products without ingredients are valid (e.g. services/fees); they record
-        # the transaction but do not fan out to raw stock.
+        if product.product_type != "purchase":
+            raise TransactionError(f'"{product.name}" is not a restockable product.')
 
         subtotal = unit_price * quantity
         total += subtotal
@@ -557,11 +558,18 @@ def create_product_restock(
             "subtotal": subtotal,
         })
 
-    # Derive vendor from the first product that has one linked.
-    derived_vendor_id = next(
-        (li["product"].vendor_id for li in line_items if li["product"].vendor_id),
-        None,
-    )
+    # Vendor validation: every product must have a vendor assigned, and all must share
+    # the same vendor (a restock is a purchase from a single supplier).
+    vendor_ids = {li["product"].vendor_id for li in line_items}
+    if None in vendor_ids:
+        raise TransactionError(
+            "All products in a restock must have a vendor assigned."
+        )
+    if len(vendor_ids) > 1:
+        raise TransactionError(
+            "A restock can only contain products from a single vendor."
+        )
+    derived_vendor_id = next(iter(vendor_ids))
 
     try:
         tx = Transaction(
@@ -576,8 +584,13 @@ def create_product_restock(
             p = li["product"]
             qty = li["quantity"]
             # Increment each linked raw stock item proportionally
-            for ing in p.ingredients:
-                ing.stock_item.quantity += ing.quantity * qty
+            if p.ingredients:
+                # Fan out to raw stock items proportionally
+                for ing in p.ingredients:
+                    ing.stock_item.quantity += ing.quantity * qty
+            else:
+                # Ingredient-less purchase product — bump direct stock
+                p.stock += qty
 
             item = TransactionItem(
                 transaction_id=tx.id,

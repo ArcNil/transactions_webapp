@@ -35,6 +35,10 @@ def upgrade():
     op.execute(
         "UPDATE products SET product_type = 'sale' WHERE vendor_id IS NULL"
     )
+    # Purchase products must not appear in POS; hide any that were left visible.
+    op.execute(
+        "UPDATE products SET show_in_pos = false WHERE vendor_id IS NOT NULL"
+    )
 
     # Enforce NOT NULL and add a CHECK constraint so only valid values can ever be stored.
     with op.batch_alter_table("products") as batch_op:
@@ -46,6 +50,10 @@ def upgrade():
 
 
 def downgrade():
+    # Undo the show_in_pos data migration before removing product_type.
+    op.execute(
+        "UPDATE products SET show_in_pos = true WHERE vendor_id IS NOT NULL"
+    )
     with op.batch_alter_table("products") as batch_op:
         batch_op.drop_constraint("ck_products_product_type", type_="check")
         batch_op.drop_column("product_type")

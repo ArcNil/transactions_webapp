@@ -5,7 +5,7 @@ from flask_login import login_required, current_user
 from decimal import Decimal, InvalidOperation
 from app.models.product import Product
 from app.services.transaction_service import create_product_restock, TransactionError
-from app.services.ledger_service import add_entry
+from app.services.ledger_service import add_entry, LedgerError
 from app.utils.monitor import record_action
 
 logger = logging.getLogger(__name__)
@@ -16,14 +16,23 @@ bp = Blueprint("restock", __name__, url_prefix="/restock")
 @bp.route("/")
 @login_required
 def index():
-    # Show only purchase-type products — these are restockable raw materials.
+    # Only purchase-type products with a vendor can be restocked.
     products = (
         Product.query
-        .filter(Product.product_type == "purchase")
+        .filter(Product.product_type == "purchase", Product.vendor_id.isnot(None))
         .order_by(Product.name)
         .all()
     )
-    return render_template("restock/index.html", products=products)
+    no_vendor_count = (
+        Product.query
+        .filter(Product.product_type == "purchase", Product.vendor_id.is_(None))
+        .count()
+    )
+    return render_template(
+        "restock/index.html",
+        products=products,
+        no_vendor_count=no_vendor_count,
+    )
 
 
 @bp.route("/save", methods=["POST"])
@@ -45,7 +54,7 @@ def save():
         try:
             if Decimal(paid) > 0:
                 add_entry(tx, "payment", paid)
-        except InvalidOperation:
+        except (InvalidOperation, LedgerError):
             logger.warning(
                 "Failed to record payment entry for restock %s", tx.id, exc_info=True
             )
