@@ -17,17 +17,11 @@ logger = logging.getLogger(__name__)
 bp = Blueprint("stock", __name__, url_prefix="/stock")
 
 
-def _vendor_choices():
-    vendors = Vendor.query.order_by(Vendor.name).all()
-    return [(0, "— None —")] + [(v.id, v.name) for v in vendors]
-
-
 @bp.route("/")
 @login_required
 def index():
     items = StockItem.query.order_by(StockItem.name).all()
     form = StockItemForm()
-    form.vendor_id.choices = _vendor_choices()
     adjust_form = StockAdjustForm()
     return render_template("stock/index.html", items=items, form=form, adjust_form=adjust_form)
 
@@ -36,12 +30,10 @@ def index():
 @login_required
 def add():
     form = StockItemForm()
-    form.vendor_id.choices = _vendor_choices()
     if form.validate_on_submit():
         item = StockItem(
             name=form.name.data.strip(),
             unit=form.unit.data.strip(),
-            vendor_id=form.vendor_id.data if form.vendor_id.data != 0 else None,
         )
         db.session.add(item)
         db.session.commit()
@@ -59,11 +51,9 @@ def add():
 def edit(item_id):
     item = db.get_or_404(StockItem, item_id)
     form = StockItemForm()
-    form.vendor_id.choices = _vendor_choices()
     if form.validate_on_submit():
         item.name = form.name.data.strip()
         item.unit = form.unit.data.strip()
-        item.vendor_id = form.vendor_id.data if form.vendor_id.data != 0 else None
         db.session.commit()
         record_action(current_user.id, current_user.username, "stock_item.edited", item.name)
         flash(f'Stock item "{item.name}" updated.', "success")

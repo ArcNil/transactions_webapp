@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+{% block title %}User Manual{% endblock %}
+
+{% block extra_css %}
+<style>
+    .manual-toc a { text-decoration: none; color: var(--primary); }
+    .manual-toc a:hover { text-decoration: underline; }
+    .manual-section { scroll-margin-top: 1.5rem; }
+    .manual-section + .manual-section { margin-top: 2.5rem; }
+    .step-list { padding-left: 1.25rem; }
+    .step-list li { margin-bottom: .4rem; }
+    .section-badge {
+        font-size: .7rem; font-weight: 600; letter-spacing: .05em;
+        text-transform: uppercase; vertical-align: middle;
+    }
+    .step-card {
+        border-left: 3px solid var(--primary);
+        background: rgba(2,132,199,.05);
+    }
+    [data-bs-theme="dark"] .step-card { background: rgba(56,189,248,.07); }
+    .step-num {
+        width: 2rem; height: 2rem; border-radius: 50%;
+        background: var(--primary); color: #fff;
+        display: flex; align-items: center; justify-content: center;
+        font-size: .85rem; font-weight: 700; flex-shrink: 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex align-items-center gap-2">
+    <i class="bi bi-book fs-4 text-primary"></i>
+    <h1>User Manual</h1>
+</div>
+
+<div class="row g-4">
+    <!-- ── Table of contents ─────────────────────────────── -->
+    <div class="col-lg-3 order-lg-2">
+        <div class="card sticky-lg-top" style="top: 1rem;">
+            <div class="card-body py-3 px-3">
+                <p class="fw-semibold mb-2 small text-uppercase text-muted" style="letter-spacing:.05em;">Contents</p>
+                <nav class="manual-toc d-flex flex-column gap-1 small">
+                    <a href="#getting-started"><i class="bi bi-rocket-takeoff me-1"></i>Getting Started</a>
+                    <a href="#pos"><i class="bi bi-cart3 me-1"></i>POS</a>
+                    <a href="#products"><i class="bi bi-droplet me-1"></i>Products</a>
+                    <a href="#customers"><i class="bi bi-people me-1"></i>Customers</a>
+                    <a href="#vendors"><i class="bi bi-truck me-1"></i>Vendors</a>
+                    <a href="#restock"><i class="bi bi-box-arrow-in-down me-1"></i>Restock</a>
+                    <a href="#stock"><i class="bi bi-archive me-1"></i>Raw Stock</a>
+                    <a href="#transactions"><i class="bi bi-receipt me-1"></i>Transactions</a>
+                    <a href="#settings"><i class="bi bi-gear me-1"></i>Settings</a>
+                    {% if current_user.is_superadmin %}
+                    <a href="#finance"><i class="bi bi-cash-stack me-1"></i>Finance</a>
+                    <a href="#monitoring"><i class="bi bi-activity me-1"></i>Monitoring</a>
+                    {% endif %}
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Manual content ───────────────────────────────── -->
+    <div class="col-lg-9 order-lg-1">
+
+        <!-- Getting Started -->
+        <section id="getting-started" class="manual-section card border-primary">
+            <div class="card-header d-flex align-items-center gap-2 py-2 bg-primary text-white">
+                <i class="bi bi-rocket-takeoff"></i>
+                <span class="fw-semibold">Getting Started — New User Setup</span>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-3">Follow these steps in order the first time you set up the app.</p>
+                <div class="d-flex flex-column gap-3">
+
+                    <div class="step-card rounded p-3 d-flex gap-3 align-items-start">
+                        <div class="step-num">1</div>
+                        <div>
+                            <div class="fw-semibold">Add Raw Stock items</div>
+                            <div class="text-muted small">Go to <strong>Raw Stock</strong> and add every ingredient or material your products consume (e.g. water, syrup, cups). Give each item a name, unit, and starting quantity.</div>
+                        </div>
+                    </div>
+
+                    <div class="step-card rounded p-3 d-flex gap-3 align-items-start">
+                        <div class="step-num">2</div>
+                        <div>
+                            <div class="fw-semibold">Add Vendors</div>
+                            <div class="text-muted small">Go to <strong>Vendors</strong> and add the suppliers you buy stock from. You need at least one vendor before you can record a restock.</div>
+                        </div>
+                    </div>
+
+                    <div class="step-card rounded p-3 d-flex gap-3 align-items-start">
+                        <div class="step-num">3</div>
+                        <div>
+                            <div class="fw-semibold">Add Purchase products</div>
+                            <div class="text-muted small">Go to <strong>Products</strong> and add the items you buy from vendors. Set the type to <em>Purchase</em>. These will be available when recording a restock.</div>
+                        </div>
+                    </div>
+
+                    <div class="step-card rounded p-3 d-flex gap-3 align-items-start">
+                        <div class="step-num">4</div>
+                        <div>
+                            <div class="fw-semibold">Record your first Restock</div>
+                            <div class="text-muted small">Go to <strong>Restock</strong>, select your vendor, add your purchase products with quantities and unit costs, then save. This logs the expense and updates your stock levels.</div>
+                        </div>
+                    </div>
+
+                    <div class="step-card rounded p-3 d-flex gap-3 align-items-start">
+                        <div class="step-num">5</div>
+                        <div>
+                            <div class="fw-semibold">Add Sale products</div>
+                            <div class="text-muted small">Go to <strong>Products</strong> and add what you sell to customers. Set the type to <em>Sale</em> and enable <em>Show in POS</em>. Link raw stock items as ingredients so stock is deducted automatically on each sale.</div>
+                        </div>
+                    </div>
+
+                    <div class="step-card rounded p-3 d-flex gap-3 align-items-start">
+                        <div class="step-num">6</div>
+                        <div>
+                            <div class="fw-semibold">Make your first sale</div>
+                            <div class="text-muted small">Go to <strong>POS</strong>, tap your products to build a cart, choose a payment method (Cash or GCash), and click <strong>Charge</strong>. The transaction and stock deductions are recorded automatically.</div>
+                        </div>
+                    </div>
+
+                    <div class="step-card rounded p-3 d-flex gap-3 align-items-start">
+                        <div class="step-num">7</div>
+                        <div>
+                            <div class="fw-semibold">Update your Settings</div>
+                            <div class="text-muted small">Go to <strong>Settings</strong> to set the app title and change your username or password. Superadmins can also add or manage other user accounts here.</div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- POS -->
+        <section id="pos" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-cart3 text-primary"></i>
+                <span class="fw-semibold">POS — Point of Sale</span>
+            </div>
+            <div class="card-body">
+                <p>The POS screen is where you record sales to customers.</p>
+                <h6 class="fw-semibold">Making a sale</h6>
+                <ol class="step-list">
+                    <li>Navigate to <strong>POS</strong> in the sidebar.</li>
+                    <li>Click any product button to add it to the cart. Use the <kbd>+</kbd> / <kbd>−</kbd> buttons or type a quantity directly.</li>
+                    <li>Optionally search for and select a <strong>Customer</strong> using the customer search box at the top.</li>
+                    <li>Choose a payment method: <strong>Cash</strong> or <strong>GCash</strong>.</li>
+                    <li>For cash payments, enter the amount tendered — change due is calculated automatically.</li>
+                    <li>Click <strong>Charge</strong> to complete the sale. A receipt summary is shown and the transaction is recorded.</li>
+                </ol>
+                <h6 class="fw-semibold mt-3">Notes</h6>
+                <ul class="step-list">
+                    <li>Only products marked <em>Show in POS</em> and of type <em>Sale</em> appear on the POS screen.</li>
+                    <li>Stock is deducted automatically for products that have linked ingredients.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Products -->
+        <section id="products" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-droplet text-primary"></i>
+                <span class="fw-semibold">Products</span>
+            </div>
+            <div class="card-body">
+                <p>Products are the items your business sells or purchases. Each product has a type that controls where it appears.</p>
+                <h6 class="fw-semibold">Product types</h6>
+                <table class="table table-sm small">
+                    <thead class="table-light">
+                        <tr><th>Type</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>Sale</strong></td><td>Items sold to customers at the POS. Can be shown or hidden on the POS screen.</td></tr>
+                        <tr><td><strong>Purchase</strong></td><td>Items bought from vendors for restocking. Never shown on the POS screen.</td></tr>
+                    </tbody>
+                </table>
+                <h6 class="fw-semibold mt-3">Adding a product</h6>
+                <ol class="step-list">
+                    <li>Go to <strong>Products</strong> and click <strong>Add Product</strong>.</li>
+                    <li>Enter the name, price, and unit (e.g. cup, bottle).</li>
+                    <li>Select the product type: <em>Sale</em> or <em>Purchase</em>.</li>
+                    <li>Optionally upload a photo (JPEG/PNG, max 2 MB).</li>
+                    <li>Click <strong>Save</strong>.</li>
+                </ol>
+                <h6 class="fw-semibold mt-3">Show in POS toggle</h6>
+                <p class="mb-0">On the Products list, use the toggle switch in the <em>POS</em> column to show or hide a <em>Sale</em>-type product on the POS screen. Purchase products cannot be toggled.</p>
+            </div>
+        </section>
+
+        <!-- Customers -->
+        <section id="customers" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-people text-primary"></i>
+                <span class="fw-semibold">Customers</span>
+            </div>
+            <div class="card-body">
+                <p>Keep a record of your regular customers to attach them to transactions.</p>
+                <h6 class="fw-semibold">Adding a customer</h6>
+                <ol class="step-list">
+                    <li>Go to <strong>Customers</strong> and click <strong>Add Customer</strong>.</li>
+                    <li>Enter the customer's name and optionally their phone number.</li>
+                    <li>Click <strong>Save</strong>.</li>
+                </ol>
+                <h6 class="fw-semibold mt-3">Editing / deleting</h6>
+                <p class="mb-0">Click the pencil icon next to a customer to edit their details. Click the trash icon to delete. A customer with existing transactions cannot be deleted.</p>
+            </div>
+        </section>
+
+        <!-- Vendors -->
+        <section id="vendors" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-truck text-primary"></i>
+                <span class="fw-semibold">Vendors</span>
+            </div>
+            <div class="card-body">
+                <p>Vendors are suppliers you buy stock from. Every purchase restock is linked to a vendor.</p>
+                <h6 class="fw-semibold">Adding a vendor</h6>
+                <ol class="step-list">
+                    <li>Go to <strong>Vendors</strong> and click <strong>Add Vendor</strong>.</li>
+                    <li>Enter the vendor name and optionally contact details.</li>
+                    <li>Click <strong>Save</strong>.</li>
+                </ol>
+                <h6 class="fw-semibold mt-3">Editing / deleting</h6>
+                <p class="mb-0">Use the action buttons on each vendor row. A vendor linked to existing restock records cannot be deleted.</p>
+            </div>
+        </section>
+
+        <!-- Restock -->
+        <section id="restock" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-box-arrow-in-down text-primary"></i>
+                <span class="fw-semibold">Restock</span>
+            </div>
+            <div class="card-body">
+                <p>Record purchases from vendors to replenish your inventory.</p>
+                <h6 class="fw-semibold">Recording a restock</h6>
+                <ol class="step-list">
+                    <li>Go to <strong>Restock</strong> and click <strong>New Restock</strong>.</li>
+                    <li>Select the <strong>vendor</strong> you purchased from.</li>
+                    <li>Add one or more <em>Purchase</em>-type products, entering the quantity and unit cost for each.</li>
+                    <li>Click <strong>Save</strong> — the cost is recorded as an expense and stock is updated automatically.</li>
+                </ol>
+                <h6 class="fw-semibold mt-3">Notes</h6>
+                <p class="mb-0">Only <em>Purchase</em>-type products are available for restocking. The total cost of each restock is recorded as a transaction expense in the ledger.</p>
+            </div>
+        </section>
+
+        <!-- Raw Stock -->
+        <section id="stock" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-archive text-primary"></i>
+                <span class="fw-semibold">Raw Stock</span>
+            </div>
+            <div class="card-body">
+                <p>Raw Stock tracks ingredients or materials used by your sale products.</p>
+                <h6 class="fw-semibold">Stock items</h6>
+                <ol class="step-list">
+                    <li>Go to <strong>Raw Stock</strong> to see all stock items and their current quantities.</li>
+                    <li>Add new stock items with a name, unit, and starting quantity.</li>
+                    <li>Link stock items to sale products as ingredients — when a sale is made, the ingredient quantities are deducted automatically.</li>
+                </ol>
+                <h6 class="fw-semibold mt-3">Manual adjustment</h6>
+                <p class="mb-0">You can manually increase or decrease stock levels using the adjustment controls on each stock item row.</p>
+            </div>
+        </section>
+
+        <!-- Transactions -->
+        <section id="transactions" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-receipt text-primary"></i>
+                <span class="fw-semibold">Transactions</span>
+            </div>
+            <div class="card-body">
+                <p>The Transactions page shows a full history of all sales and expense records.</p>
+                <h6 class="fw-semibold">Using the list</h6>
+                <ul class="step-list">
+                    <li>Use the <strong>search bar</strong> to find transactions by ID, customer name, or notes.</li>
+                    <li>Use the <strong>Type</strong> and <strong>Status</strong> filters to narrow results.</li>
+                    <li>Click any column header to sort.</li>
+                    <li>Use the <strong>rows per page</strong> selector to control how many records are shown.</li>
+                </ul>
+                <h6 class="fw-semibold mt-3">Transaction types</h6>
+                <table class="table table-sm small">
+                    <thead class="table-light">
+                        <tr><th>Type</th><th>Description</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>Sale</strong></td><td>Revenue from a customer purchase at the POS.</td></tr>
+                        <tr><td><strong>Expense</strong></td><td>Cost recorded when a restock is saved.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Settings -->
+        <section id="settings" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-gear text-primary"></i>
+                <span class="fw-semibold">Settings</span>
+            </div>
+            <div class="card-body">
+                <h6 class="fw-semibold">Change your credentials</h6>
+                <ol class="step-list">
+                    <li>Go to <strong>Settings</strong>.</li>
+                    <li>Enter a new username and/or new password in the <em>Change Credentials</em> form.</li>
+                    <li>Confirm the new password and click <strong>Save</strong>.</li>
+                </ol>
+                {% if current_user.is_superadmin %}
+                <h6 class="fw-semibold mt-3">
+                    User management
+                    <span class="badge bg-warning text-dark section-badge ms-1">Superadmin</span>
+                </h6>
+                <ul class="step-list">
+                    <li><strong>Add user</strong> — fill in the username, password, and role (<em>Admin</em> or <em>Superadmin</em>), then click <strong>Add</strong>.</li>
+                    <li><strong>Edit user</strong> — click the pencil icon next to a user to change their username, password, or role.</li>
+                    <li><strong>Delete user</strong> — click the trash icon. You cannot delete your own account.</li>
+                </ul>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Finance (superadmin only) -->
+        {% if current_user.is_superadmin %}
+        <section id="finance" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-cash-stack text-primary"></i>
+                <span class="fw-semibold">Finance</span>
+                <span class="badge bg-warning text-dark section-badge ms-1">Superadmin</span>
+            </div>
+            <div class="card-body">
+                <p>The Finance page gives a high-level view of revenue versus expenses.</p>
+                <ul class="step-list">
+                    <li><strong>Summary cards</strong> — total revenue, total expenses, and net profit for the selected period.</li>
+                    <li><strong>Sales ledger</strong> — list of all sale transactions with amounts and payment methods.</li>
+                    <li><strong>Expenses ledger</strong> — list of all restock expenses with vendor and product details.</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Monitoring (superadmin only) -->
+        <section id="monitoring" class="manual-section card">
+            <div class="card-header d-flex align-items-center gap-2 py-2">
+                <i class="bi bi-activity text-primary"></i>
+                <span class="fw-semibold">Monitoring</span>
+                <span class="badge bg-warning text-dark section-badge ms-1">Superadmin</span>
+            </div>
+            <div class="card-body">
+                <p>Monitoring shows live system health and a full audit log of all user actions.</p>
+                <ul class="step-list">
+                    <li><strong>Live stats</strong> — active sessions, request counts, and error rates updated every few seconds via a live stream.</li>
+                    <li><strong>Audit log</strong> — every login, logout, create, update, and delete action is recorded with the username, timestamp, and details.</li>
+                    <li><strong>Security events</strong> — failed login attempts and permission-denied errors are flagged separately.</li>
+                </ul>
+            </div>
+        </section>
+        {% endif %}
+
+    </div><!-- /col -->
+</div><!-- /row -->
+{% endblock %}

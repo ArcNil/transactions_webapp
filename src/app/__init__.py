@@ -47,6 +47,7 @@ def create_app():
     from app.routes.restock import bp as restock_bp
     from app.routes.stock import bp as stock_bp
     from app.routes.finance import bp as finance_bp
+    from app.routes.manual import bp as manual_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -60,6 +61,7 @@ def create_app():
     app.register_blueprint(restock_bp)
     app.register_blueprint(stock_bp)
     app.register_blueprint(finance_bp)
+    app.register_blueprint(manual_bp)
 
     # ── Monitoring hooks ──────────────────────────────────────────────────────
     from app.utils.monitor import record_request, session_opened, session_closed

@@ -23,6 +23,7 @@ class Product(db.Model):
 
     vendor = db.relationship("Vendor", back_populates="products")
     ingredients = db.relationship("ProductIngredient", back_populates="product", cascade="all, delete-orphan")
+    yields = db.relationship("ProductYield", back_populates="product", cascade="all, delete-orphan")
 
     @property
     def available_stock(self):
