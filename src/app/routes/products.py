@@ -23,16 +23,6 @@ bp = Blueprint("products", __name__, url_prefix="/products")
 
 _MAX_PHOTO_BYTES = 2 * 1024 * 1024  # 2 MB
 
-_MIME_MAGIC: list[tuple[bytes, int, bytes, str]] = [
-    # (prefix, offset_for_secondary, secondary_bytes, mime)
-    (b"\xff\xd8\xff", 0, b"", "image/jpeg"),
-    (b"\x89PNG\r\n\x1a\n", 0, b"", "image/png"),
-    (b"GIF87a", 0, b"", "image/gif"),
-    (b"GIF89a", 0, b"", "image/gif"),
-    (b"RIFF", 0, b"WEBP", "image/webp"),  # RIFF at 0, WEBP at 8
-]
-
-
 def _get_image_mime(stream) -> str | None:
     """Return MIME type from magic bytes, or None if not a recognised image format."""
     header = stream.read(12)
@@ -137,7 +127,7 @@ def edit(product_id):
         raw_vid = request.form.get("vendor_id", "").strip()
         vendor_id = int(raw_vid) if raw_vid.isdigit() and int(raw_vid) > 0 else None
         photo_data = None
-        remove_photo = bool(request.form.get("remove_photo"))
+        remove_photo = form.remove_photo.data
         if not remove_photo and form.photo.data:
             photo_data, err = _process_photo(form.photo.data)
             if err:

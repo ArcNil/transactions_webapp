@@ -271,6 +271,24 @@ class TestTogglePos:
                     toggle_pos(product, user_id=1, username="admin")
                 mock_rollback.assert_called_once()
 
+    def test_purchase_type_product_raises_product_error(self, app, db_session):
+        product = Product(
+            name="Raw Material",
+            unit="kg",
+            price=Decimal("5.00"),
+            stock=Decimal("10"),
+            product_type="purchase",
+            show_in_pos=False,
+        )
+        db_session.add(product)
+        db_session.commit()
+
+        with pytest.raises(ProductError, match="Purchase products cannot"):
+            toggle_pos(product, user_id=1, username="admin")
+
+        db_session.refresh(product)
+        assert product.show_in_pos is False
+
 
 class TestDeleteIngredient:
     def test_happy_path_deletes_ingredient_and_returns_names(

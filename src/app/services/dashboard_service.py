@@ -61,7 +61,7 @@ def get_stats() -> dict:
     }
 
 
-_EXPENSE_TYPES = ("restock", "stock_restock")
+_EXPENSE_TYPES = ("restock", "stock_restock", "product_restock")
 
 
 def get_financial_summary() -> dict:
@@ -87,7 +87,7 @@ def get_sales_transactions() -> list:
 
 
 def get_expense_transactions() -> list:
-    """Return all restock/stock_restock transactions ordered newest-first."""
+    """Return all expense transactions (restock, stock_restock, product_restock) ordered newest-first."""
     return (
         Transaction.query
         .filter(Transaction.transaction_type.in_(_EXPENSE_TYPES))

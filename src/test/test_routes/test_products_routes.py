@@ -1,3 +1,4 @@
+import io
 from decimal import Decimal
 
 from app.models.product import Product
@@ -477,3 +478,122 @@ def test_edit_product_clears_vendor_when_vendor_id_is_zero(
 
     db_session.refresh(sample_product)
     assert sample_product.vendor_id is None
+
+
+# ---------------------------------------------------------------------------
+# toggle_pos — purchase-type guard (route level)
+# ---------------------------------------------------------------------------
+
+
+def test_products_toggle_pos_purchase_type_flashes_danger(logged_in_client, db_session):
+    product = Product(
+        name="Raw Material",
+        unit="kg",
+        price="5.00",
+        stock=Decimal("10"),
+        product_type="purchase",
+        show_in_pos=False,
+    )
+    db_session.add(product)
+    db_session.commit()
+
+    response = logged_in_client.post(
+        f"/products/{product.id}/toggle_pos",
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"Purchase products cannot" in response.data
+
+    db_session.refresh(product)
+    assert product.show_in_pos is False
+
+
+# ---------------------------------------------------------------------------
+# photo upload — POST /products/add and /products/<id>/edit
+# ---------------------------------------------------------------------------
+
+
+def test_add_product_with_valid_photo_stores_data_uri(logged_in_client, db_session):
+    jpeg_bytes = b"\xff\xd8\xff" + b"\x00" * 50
+    response = logged_in_client.post(
+        "/products/add",
+        data={
+            "name": "Photo Product",
+            "unit": "gallon",
+            "price": "10.00",
+            "is_active": "y",
+            "photo": (io.BytesIO(jpeg_bytes), "test.jpg"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"added" in response.data
+
+    product = Product.query.filter_by(name="Photo Product").first()
+    assert product is not None
+    assert product.photo_data is not None
+    assert product.photo_data.startswith("data:image/jpeg;base64,")
+
+
+def test_add_product_with_oversized_photo_flashes_error(logged_in_client, db_session):
+    big_bytes = b"\xff\xd8\xff" + b"\x00" * (2 * 1024 * 1024)  # > 2 MB
+    response = logged_in_client.post(
+        "/products/add",
+        data={
+            "name": "BigPhoto Product",
+            "unit": "gallon",
+            "price": "10.00",
+            "is_active": "y",
+            "photo": (io.BytesIO(big_bytes), "big.jpg"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"2 MB" in response.data
+    assert Product.query.filter_by(name="BigPhoto Product").first() is None
+
+
+def test_add_product_with_wrong_magic_bytes_flashes_error(logged_in_client, db_session):
+    bad_bytes = b"not an image at all"
+    response = logged_in_client.post(
+        "/products/add",
+        data={
+            "name": "BadMagic Product",
+            "unit": "gallon",
+            "price": "10.00",
+            "is_active": "y",
+            "photo": (io.BytesIO(bad_bytes), "fake.jpg"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"Unsupported" in response.data
+    assert Product.query.filter_by(name="BadMagic Product").first() is None
+
+
+def test_edit_product_remove_photo_clears_photo_data(
+    logged_in_client, sample_product, db_session
+):
+    sample_product.photo_data = "data:image/jpeg;base64,/9j/ABC"
+    db_session.commit()
+
+    product_id = sample_product.id
+    response = logged_in_client.post(
+        f"/products/{product_id}/edit",
+        data={
+            "name": sample_product.name,
+            "unit": sample_product.unit,
+            "price": str(sample_product.price),
+            "is_active": "y",
+            "remove_photo": "on",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"updated" in response.data
+
+    db_session.refresh(sample_product)
+    assert sample_product.photo_data is None

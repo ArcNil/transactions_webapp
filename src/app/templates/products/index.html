@@ -226,6 +226,7 @@
                     </div>
                     <div class="card-footer bg-transparent border-0 d-flex justify-content-between align-items-center px-2 pb-2 pt-0 gap-1">
                         <div class="d-flex gap-1">
+                            {% if p.product_type == 'sale' %}
                             <button class="btn btn-sm btn-light px-1 py-0"
                                     title="Manage ingredients"
                                     data-product-id="{{ p.id }}"
@@ -234,6 +235,7 @@
                                     onclick="openIngredientsModal(this)">
                                 <i class="bi bi-ui-checks small"></i>
                             </button>
+                            {% endif %}
                             <button class="btn btn-sm btn-light px-1 py-0"
                                     title="Edit"
                                     data-product-id="{{ p.id }}"
@@ -579,6 +581,18 @@ function openAddModal() {
     document.getElementById('editIngredientsSection').classList.add('d-none');
 }
 
+document.getElementById('productTypeSelect').addEventListener('change', function () {
+    // Only toggle the ingredients section when editing an existing product.
+    const isEditing = document.getElementById('productModalTitle').textContent === 'Edit Product';
+    if (!isEditing) return;
+    const section = document.getElementById('editIngredientsSection');
+    if (this.value === 'sale') {
+        section.classList.remove('d-none');
+    } else {
+        section.classList.add('d-none');
+    }
+});
+
 function openEditModal(btn) {
     const id          = btn.dataset.productId;
     const name        = btn.dataset.name;
@@ -617,10 +631,16 @@ function openEditModal(btn) {
     const photoInput = f.querySelector('[name=photo]');
     if (photoInput) photoInput.value = '';
 
-    // Populate raw stock section
+    // Always wire the ingredient form so it's correct if the user switches type mid-edit
     document.getElementById('editIngAddForm').action = editBaseUrl + id + '/ingredients/add';
     buildIngredientList(document.getElementById('editIngList'), id, ingredients);
-    document.getElementById('editIngredientsSection').classList.remove('d-none');
+
+    // Show the ingredients section only for sale products
+    if (productType === 'sale') {
+        document.getElementById('editIngredientsSection').classList.remove('d-none');
+    } else {
+        document.getElementById('editIngredientsSection').classList.add('d-none');
+    }
 
     bootstrap.Modal.getOrCreateInstance(document.getElementById('productModal')).show();
 }

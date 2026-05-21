@@ -1,6 +1,7 @@
 import math
 from app import db
 from datetime import datetime, timezone
+from sqlalchemy.orm import deferred
 
 
 class Product(db.Model):
@@ -17,7 +18,7 @@ class Product(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     show_in_pos = db.Column(db.Boolean, default=True, nullable=False)
     vendor_id = db.Column(db.Integer, db.ForeignKey("vendors.id"), nullable=True)
-    photo_data = db.Column(db.Text, nullable=True)
+    photo_data = deferred(db.Column(db.Text, nullable=True))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     vendor = db.relationship("Vendor", back_populates="products")
